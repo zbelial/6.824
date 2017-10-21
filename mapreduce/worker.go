@@ -57,9 +57,7 @@ func Register(master string, me string) {
 
 // Set up a connection with the master, register with the master,
 // and wait for jobs from the master
-func RunWorker(MasterAddress string, me string,
-	MapFunc func(string) *list.List,
-	ReduceFunc func(string, *list.List) string, nRPC int) {
+func RunWorker(MasterAddress string, me string, MapFunc func(string) *list.List, ReduceFunc func(string, *list.List) string, nRPC int) {
 	DPrintf("RunWorker %s\n", me)
 	wk := new(Worker)
 	wk.name = me

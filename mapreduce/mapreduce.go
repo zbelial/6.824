@@ -66,8 +66,7 @@ type MapReduce struct {
 	// add any additional state here
 }
 
-func InitMapReduce(nmap int, nreduce int,
-	file string, master string) *MapReduce {
+func InitMapReduce(nmap int, nreduce int, file string, master string) *MapReduce {
 	mr := new(MapReduce)
 	mr.nMap = nmap
 	mr.nReduce = nreduce
@@ -78,11 +77,12 @@ func InitMapReduce(nmap int, nreduce int,
 	mr.DoneChannel = make(chan bool)
 
 	// initialize any additional state here
+	mr.Workers = make(map[string]*WorkerInfo)
+
 	return mr
 }
 
-func MakeMapReduce(nmap int, nreduce int,
-	file string, master string) *MapReduce {
+func MakeMapReduce(nmap int, nreduce int, file string, master string) *MapReduce {
 	mr := InitMapReduce(nmap, nreduce, file, master)
 	mr.StartRegistrationServer()
 	go mr.Run()
@@ -104,6 +104,7 @@ func (mr *MapReduce) Shutdown(args *ShutdownArgs, res *ShutdownReply) error {
 }
 
 func (mr *MapReduce) StartRegistrationServer() {
+	DPrintf("StartRegistrationServer\n")
 	rpcs := rpc.NewServer()
 	rpcs.Register(mr)
 	os.Remove(mr.MasterAddress) // only needed for "unix"
@@ -190,8 +191,7 @@ func ihash(s string) uint32 {
 
 // Read split for job, call Map for that split, and create nreduce
 // partitions.
-func DoMap(JobNumber int, fileName string,
-	nreduce int, Map func(string) *list.List) {
+func DoMap(JobNumber int, fileName string, nreduce int, Map func(string) *list.List) {
 	name := MapName(fileName, JobNumber)
 	file, err := os.Open(name)
 	if err != nil {
@@ -258,8 +258,7 @@ func MergeName(fileName string, ReduceJob int) string {
 
 // Read map outputs for partition job, sort them by key, call reduce for each
 // key
-func DoReduce(job int, fileName string, nmap int,
-	Reduce func(string, *list.List) string) {
+func DoReduce(job int, fileName string, nmap int, Reduce func(string, *list.List) string) {
 	kvs := make(map[string]*list.List)
 	for i := 0; i < nmap; i++ {
 		name := ReduceName(fileName, i, job)
@@ -363,9 +362,7 @@ func (mr *MapReduce) CleanupFiles() {
 }
 
 // Run jobs sequentially.
-func RunSingle(nMap int, nReduce int, file string,
-	Map func(string) *list.List,
-	Reduce func(string, *list.List) string) {
+func RunSingle(nMap int, nReduce int, file string, Map func(string) *list.List, Reduce func(string, *list.List) string) {
 	mr := InitMapReduce(nMap, nReduce, file, "")
 	mr.Split(mr.file)
 	for i := 0; i < nMap; i++ {
