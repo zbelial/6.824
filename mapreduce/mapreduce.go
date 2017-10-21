@@ -211,23 +211,45 @@ func DoMap(JobNumber int, fileName string,
 	file.Close()
 	res := Map(string(b))
 	// XXX a bit inefficient. could open r files and run over list once
+	encs := make([]*json.Encoder, 0, JobNumber)
+	files := make([]*os.File, 0, JobNumber)
 	for r := 0; r < nreduce; r++ {
 		file, err = os.Create(ReduceName(fileName, JobNumber, r))
 		if err != nil {
 			log.Fatal("DoMap: create ", err)
 		}
-		enc := json.NewEncoder(file)
-		for e := res.Front(); e != nil; e = e.Next() {
-			kv := e.Value.(KeyValue)
-			if ihash(kv.Key)%uint32(nreduce) == uint32(r) {
-				err := enc.Encode(&kv)
-				if err != nil {
-					log.Fatal("DoMap: marshall ", err)
-				}
-			}
-		}
-		file.Close()
+		files = append(files, file)
+		encs = append(encs, json.NewEncoder(file))
+
+		defer file.Close()
 	}
+
+	for e := res.Front(); e != nil; e = e.Next() {
+		kv := e.Value.(KeyValue)
+		r := ihash(kv.Key) % uint32(nreduce)
+		err := encs[r].Encode(&kv)
+		if err != nil {
+			log.Fatal("DoMap: marshall ", err)
+		}
+	}
+
+	// for r := 0; r < nreduce; r++ {
+	// 	file, err = os.Create(ReduceName(fileName, JobNumber, r))
+	// 	if err != nil {
+	// 		log.Fatal("DoMap: create ", err)
+	// 	}
+	// 	enc := json.NewEncoder(file)
+	// 	for e := res.Front(); e != nil; e = e.Next() {
+	// 		kv := e.Value.(KeyValue)
+	// 		if ihash(kv.Key)%uint32(nreduce) == uint32(r) {
+	// 			err := enc.Encode(&kv)
+	// 			if err != nil {
+	// 				log.Fatal("DoMap: marshall ", err)
+	// 			}
+	// 		}
+	// 	}
+	// 	file.Close()
+	// }
 }
 
 func MergeName(fileName string, ReduceJob int) string {
