@@ -3,6 +3,7 @@ package mapreduce
 import "container/list"
 import "fmt"
 import "log"
+import "time"
 
 type WorkerInfo struct {
 	address string
@@ -29,50 +30,61 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
-	var maper *WorkerInfo
-	var reducer *WorkerInfo
-	var workers = make([]*WorkerInfo, 0, 2)
-	for i := 0; i < 2; i++ {
-		worker := <-mr.registerChannel
-		log.Printf("worker %s\n", worker)
+	var workers []*WorkerInfo
+	var currMapInx = 0
+	var currReduceInx = 0
+	var done = false
+	var failed = false
+	for !done {
+		select {
+		case worker := <-mr.registerChannel:
+			log.Printf("worker %s\n", worker)
 
-		var workerInfo WorkerInfo
-		workerInfo.address = worker
+			var workerInfo WorkerInfo
+			workerInfo.address = worker
 
-		mr.Workers[worker] = &workerInfo
+			mr.Workers[worker] = &workerInfo
+			workers = append(workers, &workerInfo)
+		default:
+			//
+			if failed {
+				workers = workers[1:]
+				failed = false
+			}
+			if currMapInx < mr.nMap {
+				var mapArgs = DoJobArgs{File: mr.file, Operation: Map, JobNumber: currMapInx, NumOtherPhase: mr.nReduce}
+				var mapReply DoJobReply
 
-		workers[i] = &workerInfo
-
-		if i == 0 {
-			maper = &workerInfo
-		} else {
-			reducer = &workerInfo
-		}
-	}
-
-	var mapArgs DoJobArgs
-	var mapReply DoJobReply
-	for i := 0; i < mr.nMap; i++ {
-		mapArgs.File = mr.file
-		mapArgs.JobNumber = i
-		mapArgs.NumOtherPhase = mr.nReduce
-		mapArgs.Operation = Map
-		ok := call(maper.address, "Worker.DoJob", mapArgs, &mapReply)
-		if ok == false {
-			log.Printf("Call map DoJob %d failed", i)
-		}
-	}
-
-	for i := 0; i < mr.nReduce; i++ {
-		var reduceArgs DoJobArgs
-		var reduceReply DoJobReply
-		reduceArgs.File = mr.file
-		reduceArgs.JobNumber = i
-		reduceArgs.NumOtherPhase = mr.nMap
-		reduceArgs.Operation = Reduce
-		ok := call(reducer.address, "Worker.DoJob", reduceArgs, &reduceReply)
-		if ok == false {
-			log.Printf("Call reduce DoJob failed")
+				ok := call(workers[0].address, "Worker.DoJob", mapArgs, &mapReply)
+				if ok == false {
+					log.Printf("Call map DoJob %d failed", currMapInx)
+					if len(workers) < 2 {
+						time.Sleep(1 * time.Second)
+					}
+					delete(mr.Workers, workers[0].address)
+					failed = true
+				} else {
+					currMapInx++
+				}
+			} else {
+				if currReduceInx < mr.nReduce {
+					var reduceArgs = DoJobArgs{File: mr.file, Operation: Reduce, JobNumber: currReduceInx, NumOtherPhase: mr.nMap}
+					var reduceReply DoJobReply
+					ok := call(workers[0].address, "Worker.DoJob", reduceArgs, &reduceReply)
+					if ok == false {
+						log.Printf("Call reduce DoJob failed")
+						if len(workers) < 2 {
+							time.Sleep(1 * time.Second)
+						}
+						delete(mr.Workers, workers[0].address)
+						failed = true
+					} else {
+						currReduceInx++
+					}
+				} else {
+					done = true
+				}
+			}
 		}
 	}
 
