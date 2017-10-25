@@ -25,6 +25,16 @@ type ViewServer struct {
 	primaryAcked bool                 //
 }
 
+func (vs *ViewServer) pickFirstIdleServer() string {
+	rs := ""
+	if len(vs.idleServers) > 0 {
+		rs = vs.idleServers[0]
+		vs.idleServers = vs.idleServers[1:]
+	}
+
+	return rs
+}
+
 //
 // server Ping RPC handler.
 //
@@ -64,21 +74,11 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 					vs.currView.Viewnum += 1
 					vs.primaryAcked = false
 					vs.currView.Primary = vs.currView.Backup
-					if len(vs.idleServers) != 0 {
-						vs.currView.Backup = vs.idleServers[0]
-						vs.idleServers = vs.idleServers[1:]
-					} else {
-						vs.currView.Backup = ""
-					}
+					vs.currView.Backup = vs.pickFirstIdleServer()
 				} else if args.Me == vs.currView.Backup {
 					vs.currView.Viewnum += 1
 					vs.primaryAcked = false
-					if len(vs.idleServers) != 0 {
-						vs.currView.Backup = vs.idleServers[0]
-						vs.idleServers = vs.idleServers[1:]
-					} else {
-						vs.currView.Backup = ""
-					}
+					vs.currView.Backup = vs.pickFirstIdleServer()
 					vs.idleServers = append(vs.idleServers, args.Me)
 				} else {
 					if !has {
@@ -99,9 +99,8 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 				vs.primaryAcked = true
 
 				if vs.currView.Backup == "" && len(vs.idleServers) != 0 {
-					vs.currView.Backup = vs.idleServers[0]
+					vs.currView.Backup = vs.pickFirstIdleServer()
 					vs.currView.Viewnum += 1
-					vs.idleServers = vs.idleServers[1:]
 					vs.primaryAcked = false
 				}
 			}
@@ -148,23 +147,13 @@ func (vs *ViewServer) tick() {
 			if s == vs.currView.Primary {
 				if vs.primaryAcked {
 					vs.currView.Primary = vs.currView.Backup
-					if len(vs.idleServers) > 0 {
-						vs.currView.Backup = vs.idleServers[0]
-						vs.idleServers = vs.idleServers[1:]
-					} else {
-						vs.currView.Backup = ""
-					}
+					vs.currView.Backup = vs.pickFirstIdleServer()
 					vs.currView.Viewnum += 1
 					vs.primaryAcked = false
 				}
 			} else if s == vs.currView.Backup {
 				if vs.primaryAcked {
-					if len(vs.idleServers) > 0 {
-						vs.currView.Backup = vs.idleServers[0]
-						vs.idleServers = vs.idleServers[1:]
-					} else {
-						vs.currView.Backup = ""
-					}
+					vs.currView.Backup = vs.pickFirstIdleServer()
 					vs.currView.Viewnum += 1
 					vs.primaryAcked = false
 				}
