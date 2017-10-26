@@ -45,8 +45,8 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	defer vs.mu.Unlock()
 	defer log.Println()
 
-	log.Printf("C Viewnum %d, args.Me %s, args.Viewnum %d \n", vs.currView.Viewnum, args.Me, args.Viewnum)
-	log.Printf("C Primary %s, backup %s\n", vs.currView.Primary, vs.currView.Backup)
+	log.Printf("Ping Args.Me %s, Args.Viewnum %d \n", args.Me, args.Viewnum)
+	log.Printf("Ping Viewnum %d, Primary %s, Backup %s\n", vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup)
 	if vs.currView.Viewnum == 0 && args.Viewnum != 0 {
 		return errors.New("invalid Viewnum")
 	}
@@ -55,28 +55,29 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	if !has {
 		vs.serverMap[args.Me] = true
 	}
+
+	vs.recentTimes[args.Me] = time.Now()
+
 	if vs.currView.Viewnum == 0 { //首次有server ping
 		if args.Viewnum == 0 {
 			vs.currView.Viewnum = 1
 			vs.currView.Primary = args.Me
 			vs.primaryAcked = false
-			vs.recentTimes[args.Me] = time.Now()
 
 			reply.View = vs.currView
 
 			return nil
 		}
 	} else {
-		vs.recentTimes[args.Me] = time.Now()
 		if args.Viewnum == 0 { //新server
 			if vs.primaryAcked {
 				if args.Me == vs.currView.Primary {
-					vs.currView.Viewnum += 1
+					vs.currView.Viewnum++
 					vs.primaryAcked = false
 					vs.currView.Primary = vs.currView.Backup
 					vs.currView.Backup = vs.pickFirstIdleServer()
 				} else if args.Me == vs.currView.Backup {
-					vs.currView.Viewnum += 1
+					vs.currView.Viewnum++
 					vs.primaryAcked = false
 					vs.currView.Backup = vs.pickFirstIdleServer()
 					vs.idleServers = append(vs.idleServers, args.Me)
@@ -100,7 +101,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
 				if vs.currView.Backup == "" && len(vs.idleServers) != 0 {
 					vs.currView.Backup = vs.pickFirstIdleServer()
-					vs.currView.Viewnum += 1
+					vs.currView.Viewnum++
 					vs.primaryAcked = false
 				}
 			}
@@ -122,7 +123,7 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
-	log.Printf("Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
+	log.Printf("Get Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
 
 	reply.View = vs.currView
 
@@ -140,21 +141,25 @@ func (vs *ViewServer) tick() {
 	defer vs.mu.Unlock()
 
 	now := time.Now()
+	log.Printf("tick Primary %s, Backup %s, Viewnum %d\n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
+
 	for s, t := range vs.recentTimes {
 		if now.Sub(t) > PingInterval*DeadPings {
+			log.Printf("Server %s is inactive", s)
+
 			delete(vs.serverMap, s)
 			delete(vs.recentTimes, s)
 			if s == vs.currView.Primary {
 				if vs.primaryAcked {
 					vs.currView.Primary = vs.currView.Backup
 					vs.currView.Backup = vs.pickFirstIdleServer()
-					vs.currView.Viewnum += 1
+					vs.currView.Viewnum++
 					vs.primaryAcked = false
 				}
 			} else if s == vs.currView.Backup {
 				if vs.primaryAcked {
 					vs.currView.Backup = vs.pickFirstIdleServer()
-					vs.currView.Viewnum += 1
+					vs.currView.Viewnum++
 					vs.primaryAcked = false
 				}
 			} else {
