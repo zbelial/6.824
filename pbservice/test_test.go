@@ -1,6 +1,6 @@
 package pbservice
 
-import "viewservice"
+import "github.com/zbelial/6.824/viewservice"
 import "fmt"
 import "io"
 import "net"

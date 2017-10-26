@@ -1,12 +1,11 @@
 package pbservice
 
-import "viewservice"
+import "github.com/zbelial/6.824/viewservice"
 import "net/rpc"
 import "fmt"
 
 import "crypto/rand"
 import "math/big"
-
 
 type Clerk struct {
 	vs *viewservice.Clerk
@@ -28,7 +27,6 @@ func MakeClerk(vshost string, me string) *Clerk {
 
 	return ck
 }
-
 
 //
 // call() sends an RPC to the rpcname handler on server srv

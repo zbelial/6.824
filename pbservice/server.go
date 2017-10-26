@@ -5,14 +5,12 @@ import "fmt"
 import "net/rpc"
 import "log"
 import "time"
-import "viewservice"
 import "sync"
 import "sync/atomic"
 import "os"
 import "syscall"
 import "math/rand"
-
-
+import "github.com/zbelial/6.824/viewservice"
 
 type PBServer struct {
 	mu         sync.Mutex
@@ -22,25 +20,66 @@ type PBServer struct {
 	me         string
 	vs         *viewservice.Clerk
 	// Your declarations here.
+	view    viewservice.View
+	records map[string]string
 }
 
+func (pb *PBServer) IsPrimary() bool {
+	return pb.me == pb.view.Primary
+}
+
+func (pb *PBServer) IsBackup() bool {
+	return pb.me == pb.view.Backup
+}
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	if !pb.IsPrimary() {
+		reply.Err = ErrWrongServer
+		reply.Value = ""
+
+		return nil
+	}
+
 	// Your code here.
+	v, ok := pb.records[args.Key]
+	if !ok {
+		reply.Err = ErrNoKey
+		reply.Value = ""
+	} else {
+		reply.Err = OK
+		reply.Value = v
+	}
 
 	return nil
 }
-
 
 func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 
-	// Your code here.
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
 
+	if pb.IsPrimary() {
+
+	} else if pb.IsBackup() {
+
+	} else {
+
+	}
+	// Your code here.
 
 	return nil
 }
 
+func (pb *PBServer) PutAll(args *PutAllArgs, reply *PutAllReply) error {
+
+	// Your code here.
+
+	return nil
+}
 
 //
 // ping the viewserver periodically.
@@ -49,8 +88,26 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 //   manage transfer of state from primary to new backup.
 //
 func (pb *PBServer) tick() {
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
 
 	// Your code here.
+	v, err := pb.vs.Ping(pb.view.Viewnum)
+	if err != nil {
+		//nothing
+		return
+	}
+
+	if pb.IsPrimary() && v.Backup != pb.view.Backup && v.Backup != "" {
+		//TODO transfer data
+		args := &PutAllArgs{pb.records}
+		reply := &PutAllReply{}
+		if ok := call(v.Backup, "PBServer.PutAll", args, reply); !ok {
+			log.Printf("PBServer tick transfer data to Backup failed")
+		}
+	}
+
+	pb.view = v
 }
 
 // tell the server to shut itself down.
@@ -77,7 +134,6 @@ func (pb *PBServer) setunreliable(what bool) {
 func (pb *PBServer) isunreliable() bool {
 	return atomic.LoadInt32(&pb.unreliable) != 0
 }
-
 
 func StartServer(vshost string, me string) *PBServer {
 	pb := new(PBServer)
