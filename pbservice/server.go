@@ -10,6 +10,7 @@ import "sync/atomic"
 import "os"
 import "syscall"
 import "math/rand"
+import "errors"
 import "github.com/zbelial/6.824/viewservice"
 
 type PBServer struct {
@@ -24,11 +25,11 @@ type PBServer struct {
 	records map[string]string
 }
 
-func (pb *PBServer) IsPrimary() bool {
+func (pb *PBServer) isPrimary() bool {
 	return pb.me == pb.view.Primary
 }
 
-func (pb *PBServer) IsBackup() bool {
+func (pb *PBServer) isBackup() bool {
 	return pb.me == pb.view.Backup
 }
 
@@ -37,7 +38,18 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	if !pb.IsPrimary() {
+	if pb.isdead() {
+		log.Println("PBServer is dead")
+
+		reply.Err = ErrWrongServer
+		reply.Value = ""
+
+		return nil
+	}
+
+	if !pb.isPrimary() {
+		log.Println("PBServer is not primary")
+
 		reply.Err = ErrWrongServer
 		reply.Value = ""
 
@@ -59,17 +71,71 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
 func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 
+	// Your code here.
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	if pb.IsPrimary() {
+	if pb.isdead() {
+		log.Println("PBServer is dead")
 
-	} else if pb.IsBackup() {
+		reply.Err = ErrWrongServer
+
+		return nil
+	}
+
+	if pb.isPrimary() {
+		log.Println("pb is Primary")
+
+		backup := pb.view.Backup
+		if backup != "" {
+			bargs := &PutAppendArgs{args.Key, args.Value, args.Type, FORWORD, false}
+			breply := &PutAppendReply{}
+
+			log.Println("Backup is not empty")
+			err := call(backup, "PBServer.PutAppend", bargs, breply)
+			if !err {
+				return errors.New("call Backup's PutAppend failed")
+			}
+
+			if breply.Err != OK {
+				reply.Err = breply.Err
+				return nil
+			}
+		}
+
+		if args.Type == PUT {
+			pb.records[args.Key] = args.Value
+		} else if args.Type == APPEND {
+			v, ok := pb.records[args.Key]
+			if !ok {
+				pb.records[args.Key] = args.Value
+			} else {
+				pb.records[args.Key] = fmt.Sprintf("%s%s", v, args.Value)
+			}
+		}
+		reply.Err = OK
+		return nil
+
+	} else if pb.isBackup() {
+		log.Println("pb is Backup")
+
+		if args.Type == PUT {
+			pb.records[args.Key] = args.Value
+		} else if args.Type == APPEND {
+			v, ok := pb.records[args.Key]
+			if !ok {
+				pb.records[args.Key] = args.Value
+			} else {
+				pb.records[args.Key] = fmt.Sprintf("%s%s", v, args.Value)
+			}
+		}
+		reply.Err = OK
+		return nil
 
 	} else {
-
+		reply.Err = ErrWrongServer
+		return nil
 	}
-	// Your code here.
 
 	return nil
 }
@@ -77,6 +143,20 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 func (pb *PBServer) PutAll(args *PutAllArgs, reply *PutAllReply) error {
 
 	// Your code here.
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	log.Println("PBServer PutAll")
+
+	if !pb.isBackup() {
+		reply.Err = ErrWrongServer
+		return nil
+	}
+
+	pb.records = make(map[string]string)
+	for k, v := range args.Records {
+		pb.records[k] = v
+	}
 
 	return nil
 }
@@ -88,22 +168,38 @@ func (pb *PBServer) PutAll(args *PutAllArgs, reply *PutAllReply) error {
 //   manage transfer of state from primary to new backup.
 //
 func (pb *PBServer) tick() {
+
+	// Your code here.
+
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	// Your code here.
 	v, err := pb.vs.Ping(pb.view.Viewnum)
 	if err != nil {
 		//nothing
+		log.Println("Ping to Viewserver failed.", err)
 		return
 	}
 
-	if pb.IsPrimary() && v.Backup != pb.view.Backup && v.Backup != "" {
+	log.Printf("PBServer tick, Current primary %s, backup %s, viewnum %d\n", v.Primary, v.Backup, v.Viewnum)
+
+	if pb.isPrimary() && v.Backup != pb.view.Backup && v.Backup != "" {
 		//TODO transfer data
 		args := &PutAllArgs{pb.records}
 		reply := &PutAllReply{}
-		if ok := call(v.Backup, "PBServer.PutAll", args, reply); !ok {
-			log.Printf("PBServer tick transfer data to Backup failed")
+		for true {
+			ok := call(v.Backup, "PBServer.PutAll", args, reply)
+			if !ok {
+				log.Println("PBServer tick transfer data to Backup failed")
+				break
+			}
+
+			if reply.Err == ErrWrongServer {
+				log.Println("Backup return ErrWrongServer")
+				continue
+			}
+
+			break
 		}
 	}
 
@@ -140,6 +236,7 @@ func StartServer(vshost string, me string) *PBServer {
 	pb.me = me
 	pb.vs = viewservice.MakeClerk(me, vshost)
 	// Your pb.* initializations here.
+	pb.records = make(map[string]string)
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(pb)

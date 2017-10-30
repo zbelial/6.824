@@ -36,6 +36,8 @@ func port(tag string, host int) string {
 func TestBasicFail(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
+	log.SetOutput(os.Stdout)
+
 	tag := "basic"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -178,6 +180,8 @@ func TestBasicFail(t *testing.T) {
 func TestAtMostOnce(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
+	log.SetOutput(os.Stdout)
+
 	tag := "tamo"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -231,6 +235,8 @@ func TestAtMostOnce(t *testing.T) {
 // Put right after a backup dies.
 func TestFailPut(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "failput"
 	vshost := port(tag+"v", 1)

@@ -3,13 +3,14 @@ package pbservice
 import "github.com/zbelial/6.824/viewservice"
 import "net/rpc"
 import "fmt"
-
+import "log"
 import "crypto/rand"
 import "math/big"
 
 type Clerk struct {
 	vs *viewservice.Clerk
 	// Your declarations here
+	view viewservice.View
 }
 
 // this may come in handy.
@@ -72,8 +73,55 @@ func call(srv string, rpcname string,
 func (ck *Clerk) Get(key string) string {
 
 	// Your code here.
+	log.Println("Get ", key)
+	getArgs := &GetArgs{key}
+	getReply := &GetReply{}
+	if ck.view.Primary == "" {
+		ck.cacheView()
+	}
+	primary := ck.primary()
 
-	return "???"
+	for true {
+		ok := call(primary, "PBServer.Get", getArgs, getReply)
+		if !ok {
+			// log.Println("PBServer.Get failed")
+			ck.cacheView()
+			primary = ck.primary()
+			continue
+		}
+
+		if getReply.Err == ErrNoKey {
+			return ""
+		}
+
+		if getReply.Err == ErrWrongServer {
+			ck.cacheView()
+			primary = ck.primary()
+			continue
+		}
+
+		return getReply.Value
+	}
+
+	return ""
+}
+
+func (ck *Clerk) primary() string {
+	return ck.view.Primary
+}
+
+func (ck *Clerk) cacheView() {
+	// log.Println("Clerk cacheView")
+
+	for true {
+		view, ok := ck.vs.Get()
+		if !ok {
+			continue
+		}
+
+		ck.view = view
+		break
+	}
 }
 
 //
@@ -82,6 +130,33 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	// Your code here.
+	log.Println("PutAppend", key, value, op)
+
+	putAppendArgs := &PutAppendArgs{key, value, op, DIRECT, false}
+	putAppendReply := &PutAppendReply{}
+
+	if ck.view.Primary == "" {
+		ck.cacheView()
+	}
+	primary := ck.primary()
+	for true {
+		ok := call(primary, "PBServer.PutAppend", putAppendArgs, putAppendReply)
+		if !ok {
+			putAppendArgs.Retry = true
+			continue
+		}
+
+		if putAppendReply.Err == OK {
+			break
+		}
+
+		if putAppendReply.Err == ErrWrongServer {
+			ck.cacheView()
+			primary = ck.primary()
+		}
+		putAppendArgs.Retry = true
+		continue
+	}
 }
 
 //

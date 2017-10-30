@@ -6,6 +6,13 @@ const (
 	ErrWrongServer = "ErrWrongServer"
 )
 
+const (
+	PUT     = "Put"
+	APPEND  = "Append"
+	FORWORD = "Forword"
+	DIRECT  = "Direct"
+)
+
 type Err string
 
 type PutAllArgs struct {
@@ -21,7 +28,9 @@ type PutAppendArgs struct {
 	Key   string
 	Value string
 	// You'll have to add definitions here.
-	Type int //0 put; 1 append
+	Type    string //put; append
+	ReqType string //forword; direct
+	Retry   bool
 
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
