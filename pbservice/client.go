@@ -4,12 +4,15 @@ import "github.com/zbelial/6.824/viewservice"
 import "net/rpc"
 import "fmt"
 import "log"
+import "time"
 import "crypto/rand"
 import "math/big"
+import "sync"
 
 type Clerk struct {
 	vs *viewservice.Clerk
 	// Your declarations here
+	mu   sync.Mutex
 	view viewservice.View
 }
 
@@ -46,8 +49,7 @@ func MakeClerk(vshost string, me string) *Clerk {
 // please use call() to send all RPCs, in client.go and server.go.
 // please don't change this function.
 //
-func call(srv string, rpcname string,
-	args interface{}, reply interface{}) bool {
+func call(srv string, rpcname string, args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("unix", srv)
 	if errx != nil {
 		return false
@@ -73,6 +75,9 @@ func call(srv string, rpcname string,
 func (ck *Clerk) Get(key string) string {
 
 	// Your code here.
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
+
 	log.Println("Get ", key)
 	getArgs := &GetArgs{key}
 	getReply := &GetReply{}
@@ -130,9 +135,12 @@ func (ck *Clerk) cacheView() {
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	// Your code here.
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
+
 	log.Println("PutAppend", key, value, op)
 
-	putAppendArgs := &PutAppendArgs{key, value, op, DIRECT, false}
+	putAppendArgs := &PutAppendArgs{key, value, op, DIRECT, nrand()}
 	putAppendReply := &PutAppendReply{}
 
 	if ck.view.Primary == "" {
@@ -142,7 +150,11 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	for true {
 		ok := call(primary, "PBServer.PutAppend", putAppendArgs, putAppendReply)
 		if !ok {
-			putAppendArgs.Retry = true
+			time.Sleep(time.Millisecond * 10)
+			log.Println("PBServer.PutAppend failed")
+			ck.cacheView()
+			primary = ck.primary()
+
 			continue
 		}
 
@@ -154,9 +166,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			ck.cacheView()
 			primary = ck.primary()
 		}
-		putAppendArgs.Retry = true
 		continue
 	}
+
+	log.Println("PutAppend", key, value, op, "Finished")
 }
 
 //

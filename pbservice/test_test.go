@@ -71,7 +71,7 @@ func TestBasicFail(t *testing.T) {
 	ck.Append("ak", "yy")
 	check(ck, "ak", "xxyy")
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Single primary, no backup ... Passed\n")
 
 	// add a backup
 
@@ -99,7 +99,7 @@ func TestBasicFail(t *testing.T) {
 	ck.Put("4", "44")
 	check(ck, "4", "44")
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Add a backup ... Passed\n")
 
 	fmt.Printf("Test: Count RPCs to viewserver ...\n")
 
@@ -122,7 +122,7 @@ func TestBasicFail(t *testing.T) {
 		t.Fatal("too many viewserver RPCs")
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Count RPCs to viewserver ... Passed\n")
 
 	// kill the primary
 
@@ -145,7 +145,7 @@ func TestBasicFail(t *testing.T) {
 	check(ck, "3", "33")
 	check(ck, "4", "44")
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Primary failure ... Passed\n")
 
 	// kill solo server, start new server, check that
 	// it does not start serving as primary
@@ -167,7 +167,7 @@ func TestBasicFail(t *testing.T) {
 	case <-time.After(2 * time.Second):
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Kill last server, new one should not be active ... Passed\n")
 
 	s1.kill()
 	s2.kill()
@@ -222,7 +222,7 @@ func TestAtMostOnce(t *testing.T) {
 		t.Fatalf("ck.Get() returned %v but expected %v\n", v, val)
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: at-most-once Append; unreliable ... Passed\n")
 
 	for i := 0; i < nservers; i++ {
 		sa[i].kill()
@@ -292,7 +292,7 @@ func TestFailPut(t *testing.T) {
 	}
 
 	check(ck, "a", "aaa")
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Put() immediately after backup failure ... Passed\n")
 
 	// kill primary, then immediate Put
 	fmt.Printf("Test: Put() immediately after primary failure ...\n")
@@ -312,7 +312,7 @@ func TestFailPut(t *testing.T) {
 	check(ck, "a", "aaa")
 	check(ck, "b", "bbb")
 	check(ck, "c", "cc")
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Put() immediately after primary failure ... Passed\n")
 
 	s1.kill()
 	s2.kill()
@@ -326,6 +326,8 @@ func TestFailPut(t *testing.T) {
 // i.e. that they processed the Put()s in the same order.
 func TestConcurrentSame(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "cs"
 	vshost := port(tag+"v", 1)
@@ -410,7 +412,7 @@ func TestConcurrentSame(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Concurrent Put()s to the same key ... Passed\n")
 
 	for i := 0; i < nservers; i++ {
 		sa[i].kill()
@@ -423,6 +425,7 @@ func TestConcurrentSame(t *testing.T) {
 // check that all known appends are present in a value,
 // and are in order for each concurrent client.
 func checkAppends(t *testing.T, v string, counts []int) {
+	log.Println("checkAppends v", v)
 	nclients := len(counts)
 	for i := 0; i < nclients; i++ {
 		lastoff := -1
@@ -449,6 +452,8 @@ func checkAppends(t *testing.T, v string, counts []int) {
 // i.e. that they processed the Append()s in the same order.
 func TestConcurrentSameAppend(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "csa"
 	vshost := port(tag+"v", 1)
@@ -544,7 +549,7 @@ func TestConcurrentSameAppend(t *testing.T) {
 		t.Fatal("primary and backup had different values")
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Concurrent Append()s to the same key ... Passed\n")
 
 	for i := 0; i < nservers; i++ {
 		sa[i].kill()
@@ -556,6 +561,8 @@ func TestConcurrentSameAppend(t *testing.T) {
 
 func TestConcurrentSameUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "csu"
 	vshost := port(tag+"v", 1)
@@ -658,7 +665,7 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 		}
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Concurrent Put()s to the same key; unreliable ... Passed\n")
 
 	for i := 0; i < nservers; i++ {
 		sa[i].kill()
@@ -671,6 +678,8 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 // constant put/get while crashing and restarting servers
 func TestRepeatedCrash(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "rc"
 	vshost := port(tag+"v", 1)
@@ -769,7 +778,7 @@ func TestRepeatedCrash(t *testing.T) {
 		t.Fatalf("final Put/Get failed")
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Repeated failures/restarts ... Passed\n")
 
 	for i := 0; i < nservers; i++ {
 		samu.Lock()
@@ -783,6 +792,8 @@ func TestRepeatedCrash(t *testing.T) {
 
 func TestRepeatedCrashUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "rcu"
 	vshost := port(tag+"v", 1)
@@ -881,7 +892,7 @@ func TestRepeatedCrashUnreliable(t *testing.T) {
 		t.Fatalf("final Put/Get failed")
 	}
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Repeated failures/restarts with concurrent updates to same key; unreliable ... Passed\n")
 
 	for i := 0; i < nservers; i++ {
 		samu.Lock()
@@ -954,6 +965,8 @@ func proxy(t *testing.T, port string, delay *int32) {
 
 func TestPartition1(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "part1"
 	vshost := port(tag+"v", 1)
@@ -1038,7 +1051,7 @@ func TestPartition1(t *testing.T) {
 
 	check(ck2, "a", "111")
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Old primary does not serve Gets ... Passed\n")
 
 	s1.kill()
 	s2.kill()
@@ -1047,6 +1060,8 @@ func TestPartition1(t *testing.T) {
 
 func TestPartition2(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	log.SetOutput(os.Stdout)
 
 	tag := "part2"
 	vshost := port(tag+"v", 1)
@@ -1140,7 +1155,7 @@ func TestPartition2(t *testing.T) {
 
 	check(ck2, "a", "2")
 
-	fmt.Printf("  ... Passed\n")
+	fmt.Printf("Test: Partitioned old primary does not complete Gets ... Passed\n")
 
 	s1.kill()
 	s2.kill()

@@ -125,9 +125,7 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 
-	if vs.currView.Primary != "" && vs.currView.Backup != "" {
-		log.Printf("Get Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
-	}
+	log.Printf("Get Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
 
 	reply.View = vs.currView
 

@@ -30,7 +30,8 @@ type PutAppendArgs struct {
 	// You'll have to add definitions here.
 	Type    string //put; append
 	ReqType string //forword; direct
-	Retry   bool
+	// Retry   bool
+	Unique int64
 
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
