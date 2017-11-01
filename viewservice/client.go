@@ -2,6 +2,7 @@ package viewservice
 
 import "net/rpc"
 import "fmt"
+import "log"
 
 //
 // the viewservice Clerk lives in the client
@@ -49,7 +50,7 @@ func call(srv string, rpcname string,
 		return true
 	}
 
-	fmt.Println(err)
+	log.Println(err)
 	return false
 }
 

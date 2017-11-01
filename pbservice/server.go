@@ -77,7 +77,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	log.Println("PutAppend", args.Key, args.Value, args.Type, args.ReqType, args.Unique)
+	log.Println("PutAppend", args.Type, args.Key, args.Value, args.ReqType, args.Unique)
 
 	if pb.isdead() {
 		log.Println("PBServer is dead")
@@ -88,12 +88,12 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	}
 
 	if pb.isPrimary() {
-		log.Println("pb is Primary")
+		// log.Println("pb is Primary")
 
 		pb.lastUnique = args.Unique
 		backup := pb.view.Backup
 		if backup != "" {
-			log.Println("PubAppend Backup", backup)
+			// log.Printf("PubAppend forward to %s from %s\n", backup, pb.me)
 
 			bargs := &PutAppendArgs{args.Key, args.Value, args.Type, FORWORD, args.Unique}
 			breply := &PutAppendReply{}
@@ -130,7 +130,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		return nil
 
 	} else if pb.isBackup() {
-		log.Println("pb is Backup")
+		// log.Println("pb is Backup")
 
 		if args.ReqType == DIRECT {
 			reply.Err = ErrWrongServer
@@ -179,12 +179,14 @@ func (pb *PBServer) PutAll(args *PutAllArgs, reply *PutAllReply) error {
 		return nil
 	}
 
+	count := 0
 	pb.records = make(map[string]string)
 	for k, v := range args.Records {
+		count++
 		pb.records[k] = v
 	}
 
-	log.Println("PBServer PutAll Finished")
+	log.Printf("PBServer PutAll Finished, Total count %d\n", count)
 	reply.Err = OK
 	return nil
 }
@@ -209,17 +211,25 @@ func (pb *PBServer) tick() {
 		return
 	}
 
-	log.Printf("PBServer tick, me %s, primary %s, backup %s, viewnum %d, old backup %s\n", pb.me, v.Primary, v.Backup, v.Viewnum, pb.view.Backup)
-
-	if pb.isPrimary() && v.Backup != pb.view.Backup && v.Backup != "" {
-		//TODO transfer data
-		args := &PutAllArgs{pb.records}
-		reply := &PutAllReply{}
-		ok := call(v.Backup, "PBServer.PutAll", args, reply)
-		if !ok {
-			log.Println("PBServer tick transfer data to Backup failed")
-		} else if reply.Err == ErrWrongServer {
-			log.Println("Backup return ErrWrongServer")
+	for {
+		log.Printf("PBServer tick, me %s, primary %s, backup %s, viewnum %d, old backup %s\n", pb.me, v.Primary, v.Backup, v.Viewnum, pb.view.Backup)
+		if pb.isPrimary() && v.Backup != pb.view.Backup && v.Backup != "" {
+			//TODO transfer data
+			args := &PutAllArgs{pb.records}
+			reply := &PutAllReply{}
+			log.Printf("PBServer.PutAll from %s to %s\n", pb.me, v.Backup)
+			ok := call(v.Backup, "PBServer.PutAll", args, reply)
+			if !ok {
+				log.Println("PBServer tick transfer data to Backup failed")
+				v, _ = pb.vs.Ping(pb.view.Viewnum)
+			} else if reply.Err == ErrWrongServer {
+				log.Println("Backup return ErrWrongServer")
+				v, _ = pb.vs.Ping(pb.view.Viewnum)
+			} else {
+				break
+			}
+		} else {
+			break
 		}
 	}
 
@@ -230,6 +240,7 @@ func (pb *PBServer) tick() {
 // please do not change these two functions.
 func (pb *PBServer) kill() {
 	atomic.StoreInt32(&pb.dead, 1)
+	log.Println("PBServer kill", pb.me)
 	pb.l.Close()
 }
 

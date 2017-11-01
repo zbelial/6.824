@@ -2,7 +2,6 @@ package pbservice
 
 import "github.com/zbelial/6.824/viewservice"
 import "net/rpc"
-import "fmt"
 import "log"
 import "time"
 import "crypto/rand"
@@ -61,7 +60,7 @@ func call(srv string, rpcname string, args interface{}, reply interface{}) bool 
 		return true
 	}
 
-	fmt.Println(err)
+	log.Println(err)
 	return false
 }
 
@@ -78,13 +77,18 @@ func (ck *Clerk) Get(key string) string {
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
 
-	log.Println("Get ", key)
+	log.Println("Get", key)
 	getArgs := &GetArgs{key}
 	getReply := &GetReply{}
 	if ck.view.Primary == "" {
 		ck.cacheView()
 	}
 	primary := ck.primary()
+
+	v := ""
+	defer func() {
+		log.Printf("Get %s returns %s\n", key, v)
+	}()
 
 	for true {
 		ok := call(primary, "PBServer.Get", getArgs, getReply)
@@ -96,7 +100,8 @@ func (ck *Clerk) Get(key string) string {
 		}
 
 		if getReply.Err == ErrNoKey {
-			return ""
+			v = ""
+			return v
 		}
 
 		if getReply.Err == ErrWrongServer {
@@ -105,10 +110,11 @@ func (ck *Clerk) Get(key string) string {
 			continue
 		}
 
-		return getReply.Value
+		v = getReply.Value
+		return v
 	}
-
-	return ""
+	v = ""
+	return v
 }
 
 func (ck *Clerk) primary() string {
@@ -138,7 +144,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
 
-	log.Println("PutAppend", key, value, op)
+	// log.Println("PutAppend", key, value, op)
 
 	putAppendArgs := &PutAppendArgs{key, value, op, DIRECT, nrand()}
 	putAppendReply := &PutAppendReply{}
@@ -150,7 +156,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	for true {
 		ok := call(primary, "PBServer.PutAppend", putAppendArgs, putAppendReply)
 		if !ok {
-			time.Sleep(time.Millisecond * 10)
+			time.Sleep(time.Millisecond * 20)
 			log.Println("PBServer.PutAppend failed")
 			ck.cacheView()
 			primary = ck.primary()
