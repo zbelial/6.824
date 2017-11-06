@@ -58,13 +58,13 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
 	log.Printf("Ping Me %s, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
 
-	vs.recentTimes[args.Me] = time.Now()
-
 	_, has := vs.serverMap[args.Me]
 	if !has {
 		vs.serverMap[args.Me] = true
+		vs.addIdleServer(args.Me)
 	}
 	vs.serverLastPing[args.Me] = *args
+	vs.recentTimes[args.Me] = time.Now()
 
 	return nil
 }
