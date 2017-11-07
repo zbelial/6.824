@@ -55,9 +55,9 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 	defer func() {
-		log.Printf("Ping Me %s, VN %d, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, args.Viewnum, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
+		log.Printf("ViewServer Ping Me %s, VN %d, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, args.Viewnum, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
 	}()
-	log.Printf("Ping Me %s, VN %d, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, args.Viewnum, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
+	log.Printf("ViewServer Ping Me %s, VN %d, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, args.Viewnum, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
 
 	vs.recentTimes[args.Me] = time.Now()
 	_, has := vs.serverMap[args.Me]
@@ -96,7 +96,7 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 	defer vs.mu.Unlock()
 
 	if vs.currView.Primary != "" || vs.currView.Backup != "" {
-		log.Printf("Get Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
+		log.Printf("ViewServer Get Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
 	}
 
 	reply.View = vs.currView
@@ -130,7 +130,7 @@ func (vs *ViewServer) tick() {
 
 	for s, t := range vs.recentTimes {
 		if now.Sub(t) > PingInterval*DeadPings {
-			log.Printf("Server %s is inactive", s)
+			log.Printf("ViewServer Server %s is inactive", s)
 
 			delete(vs.serverMap, s)
 			delete(vs.recentTimes, s)

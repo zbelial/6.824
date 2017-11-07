@@ -30,8 +30,7 @@ type PutAppendArgs struct {
 	// You'll have to add definitions here.
 	Type    string //put; append
 	ReqType string //forword; direct
-	// Retry   bool
-	Unique int64
+	Unique  int64
 
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
@@ -42,7 +41,9 @@ type PutAppendReply struct {
 }
 
 type GetArgs struct {
-	Key string
+	Key     string
+	ReqType string //forword; direct
+	Unique  int64
 	// You'll have to add definitions here.
 }
 

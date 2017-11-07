@@ -31,6 +31,10 @@ func (pb *PBServer) isPrimary() bool {
 	return pb.me == pb.view.Primary
 }
 
+func (pb *PBServer) isPrimary2(primary string) bool {
+	return pb.me == primary
+}
+
 func (pb *PBServer) isBackup() bool {
 	return pb.me == pb.view.Backup
 }
@@ -40,32 +44,58 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	if pb.isdead() {
-		log.Println("PBServer is dead")
+	// if pb.isdead() {
+	// 	log.Println("PBServer is dead")
 
-		reply.Err = ErrWrongServer
-		reply.Value = ""
+	// 	reply.Err = ErrWrongServer
+	// 	reply.Value = ""
+
+	// 	return nil
+	// }
+
+	if pb.isPrimary() {
+		backup := pb.view.Backup
+		if backup != "" {
+			bargs := &GetArgs{args.Key, FORWORD, args.Unique}
+			breply := &GetReply{}
+			ok := call(backup, "PBServer.Get", bargs, breply)
+			if !ok {
+				return errors.New("PBServer call Backup's Get failed")
+			}
+		}
+
+		v, ok := pb.records[args.Key]
+		if !ok {
+			reply.Err = ErrNoKey
+			reply.Value = ""
+		} else {
+			reply.Err = OK
+			reply.Value = v
+		}
 
 		return nil
-	}
 
-	if !pb.isPrimary() {
-		log.Println("PBServer is not primary")
+	} else if pb.isBackup() {
+		if args.ReqType == DIRECT {
+			reply.Err = ErrWrongServer
+			return nil
+		}
 
-		reply.Err = ErrWrongServer
-		reply.Value = ""
+		v, ok := pb.records[args.Key]
+		if !ok {
+			reply.Err = ErrNoKey
+			reply.Value = ""
+		} else {
+			reply.Err = OK
+			reply.Value = v
+		}
 
 		return nil
-	}
-
-	// Your code here.
-	v, ok := pb.records[args.Key]
-	if !ok {
-		reply.Err = ErrNoKey
-		reply.Value = ""
 	} else {
-		reply.Err = OK
-		reply.Value = v
+		reply.Err = ErrWrongServer
+		reply.Value = ""
+
+		return nil
 	}
 
 	return nil
@@ -77,15 +107,15 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	log.Println("PutAppend", args.Type, args.Key, args.Value, args.ReqType, args.Unique)
+	log.Println("PBServer PutAppend", args.Type, args.Key, args.Value, args.ReqType, args.Unique)
 
-	if pb.isdead() {
-		log.Println("PBServer is dead")
+	// if pb.isdead() {
+	// 	log.Println("PBServer is dead")
 
-		reply.Err = ErrWrongServer
+	// 	reply.Err = ErrWrongServer
 
-		return nil
-	}
+	// 	return nil
+	// }
 
 	if pb.isPrimary() {
 		// log.Println("pb is Primary")
@@ -100,7 +130,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 
 			err := call(backup, "PBServer.PutAppend", bargs, breply)
 			if !err {
-				return errors.New("call Backup's PutAppend failed")
+				return errors.New("PBServer call Backup's PutAppend failed")
 			}
 
 			if breply.Err != OK {
@@ -126,6 +156,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 			}
 		}
 		pb.uniqueMap[args.Unique] = true
+
 		reply.Err = OK
 		return nil
 
@@ -155,6 +186,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 			}
 		}
 		pb.uniqueMap[args.Unique] = true
+
 		reply.Err = OK
 		return nil
 
@@ -207,13 +239,13 @@ func (pb *PBServer) tick() {
 	v, err := pb.vs.Ping(pb.view.Viewnum)
 	if err != nil {
 		//nothing
-		log.Println("Ping to Viewserver failed.", err)
+		log.Println("PBServer Ping to Viewserver failed.", err)
 		return
 	}
 
 	for {
-		log.Printf("PBServer tick, me %s, primary %s, backup %s, viewnum %d, old backup %s\n", pb.me, v.Primary, v.Backup, v.Viewnum, pb.view.Backup)
-		if pb.isPrimary() && v.Backup != pb.view.Backup && v.Backup != "" {
+		log.Printf("PBServer tick, Me %s, P %s, B %s, VN %d, old B %s\n", pb.me, v.Primary, v.Backup, v.Viewnum, pb.view.Backup)
+		if pb.isPrimary2(v.Primary) && v.Backup != pb.view.Backup && v.Backup != "" {
 			//TODO transfer data
 			args := &PutAllArgs{pb.records}
 			reply := &PutAllReply{}
@@ -221,15 +253,17 @@ func (pb *PBServer) tick() {
 			ok := call(v.Backup, "PBServer.PutAll", args, reply)
 			if !ok {
 				log.Println("PBServer tick transfer data to Backup failed")
-				v, _ = pb.vs.Ping(pb.view.Viewnum)
+				v, _ = pb.vs.Ping(v.Viewnum)
+
+				continue
 			} else if reply.Err == ErrWrongServer {
 				log.Println("Backup return ErrWrongServer")
-				v, _ = pb.vs.Ping(pb.view.Viewnum)
+				v, _ = pb.vs.Ping(v.Viewnum)
+
+				continue
 			} else {
 				break
 			}
-		} else {
-			break
 		}
 	}
 
@@ -263,7 +297,7 @@ func (pb *PBServer) isunreliable() bool {
 }
 
 func StartServer(vshost string, me string) *PBServer {
-	log.Println("PBServer StartServer, me", me)
+	log.Println("PBServer StartServer, Me", me)
 
 	pb := new(PBServer)
 	pb.me = me
@@ -291,16 +325,16 @@ func StartServer(vshost string, me string) *PBServer {
 			if err == nil && pb.isdead() == false {
 				if pb.isunreliable() && (rand.Int63()%1000) < 100 {
 					// discard the request.
-					log.Println("discard the request.")
+					log.Println("PBServer discard the request.")
 					conn.Close()
 				} else if pb.isunreliable() && (rand.Int63()%1000) < 200 {
 					// process the request but force discard of reply.
-					log.Println("process the request but force discard of reply.")
+					log.Println("PBServer process the request but force discard of reply.")
 					c1 := conn.(*net.UnixConn)
 					f, _ := c1.File()
 					err := syscall.Shutdown(int(f.Fd()), syscall.SHUT_WR)
 					if err != nil {
-						fmt.Printf("shutdown: %v\n", err)
+						log.Printf("PBServer shutdown: %v\n", err)
 					}
 					go rpcs.ServeConn(conn)
 				} else {
@@ -310,7 +344,7 @@ func StartServer(vshost string, me string) *PBServer {
 				conn.Close()
 			}
 			if err != nil && pb.isdead() == false {
-				fmt.Printf("PBServer(%v) accept: %v\n", me, err.Error())
+				log.Printf("PBServer(%v) accept: %v\n", me, err.Error())
 				pb.kill()
 			}
 		}

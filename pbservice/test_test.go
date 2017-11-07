@@ -33,7 +33,7 @@ func port(tag string, host int) string {
 	return s
 }
 
-func TestBasicFail(t *testing.T) {
+func tTestBasicFail(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -177,7 +177,7 @@ func TestBasicFail(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func TestAtMostOnce(t *testing.T) {
+func tTestAtMostOnce(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -233,7 +233,7 @@ func TestAtMostOnce(t *testing.T) {
 }
 
 // Put right after a backup dies.
-func TestFailPut(t *testing.T) {
+func tTestFailPut(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -324,7 +324,7 @@ func TestFailPut(t *testing.T) {
 // do a bunch of concurrent Put()s on the same key,
 // then check that primary and backup have identical values.
 // i.e. that they processed the Put()s in the same order.
-func TestConcurrentSame(t *testing.T) {
+func tTestConcurrentSame(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -450,7 +450,7 @@ func checkAppends(t *testing.T, v string, counts []int) {
 // do a bunch of concurrent Append()s on the same key,
 // then check that primary and backup have identical values.
 // i.e. that they processed the Append()s in the same order.
-func TestConcurrentSameAppend(t *testing.T) {
+func tTestConcurrentSameAppend(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -559,7 +559,7 @@ func TestConcurrentSameAppend(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func TestConcurrentSameUnreliable(t *testing.T) {
+func tTestConcurrentSameUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -676,7 +676,7 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 }
 
 // constant put/get while crashing and restarting servers
-func TestRepeatedCrash(t *testing.T) {
+func tTestRepeatedCrash(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -830,6 +830,7 @@ func TestRepeatedCrashUnreliable(t *testing.T) {
 		for atomic.LoadInt32(&done) == 0 {
 			i := rr.Int() % nservers
 			// fmt.Printf("%v killing %v\n", ts(), 5001+i)
+			log.Printf("Killing %v\n", i)
 			sa[i].kill()
 
 			// wait long enough for new view to form, backup to be initialized
@@ -963,7 +964,7 @@ func proxy(t *testing.T, port string, delay *int32) {
 	}()
 }
 
-func TestPartition1(t *testing.T) {
+func tTestPartition1(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -1058,7 +1059,7 @@ func TestPartition1(t *testing.T) {
 	vs.Kill()
 }
 
-func TestPartition2(t *testing.T) {
+func tTestPartition2(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
