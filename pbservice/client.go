@@ -77,25 +77,30 @@ func (ck *Clerk) Get(key string) string {
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
 
-	log.Println("Get", key)
-	getArgs := &GetArgs{key}
-	getReply := &GetReply{}
-	if ck.view.Primary == "" {
-		ck.cacheView()
-	}
-	primary := ck.primary()
-
 	v := ""
 	defer func() {
 		log.Printf("Get %s returns %s\n", key, v)
 	}()
 
+	log.Println("Get", key)
+	primary := ck.primary()
+	if primary == "" {
+		primary = ck.cacheView()
+	}
+
+	getArgs := &GetArgs{key, FORWORD, nrand()}
+	getReply := &GetReply{}
+
 	for true {
 		ok := call(primary, "PBServer.Get", getArgs, getReply)
 		if !ok {
 			// log.Println("PBServer.Get failed")
-			ck.cacheView()
-			primary = ck.primary()
+			time.Sleep(viewservice.PingInterval)
+			primary = ck.cacheView()
+			continue
+		}
+		if getReply.Err == ErrWrongServer {
+			primary = ck.cacheView()
 			continue
 		}
 
@@ -104,16 +109,10 @@ func (ck *Clerk) Get(key string) string {
 			return v
 		}
 
-		if getReply.Err == ErrWrongServer {
-			ck.cacheView()
-			primary = ck.primary()
-			continue
-		}
-
 		v = getReply.Value
 		return v
 	}
-	v = ""
+
 	return v
 }
 
@@ -121,7 +120,7 @@ func (ck *Clerk) primary() string {
 	return ck.view.Primary
 }
 
-func (ck *Clerk) cacheView() {
+func (ck *Clerk) cacheView() string {
 	// log.Println("Clerk cacheView")
 
 	for true {
@@ -133,6 +132,8 @@ func (ck *Clerk) cacheView() {
 		ck.view = view
 		break
 	}
+
+	return ck.view.Primary
 }
 
 //
@@ -149,33 +150,30 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	putAppendArgs := &PutAppendArgs{key, value, op, DIRECT, nrand()}
 	putAppendReply := &PutAppendReply{}
 
-	if ck.view.Primary == "" {
-		ck.cacheView()
-	}
 	primary := ck.primary()
+	if primary == "" {
+		primary = ck.cacheView()
+	}
+
 	for true {
 		ok := call(primary, "PBServer.PutAppend", putAppendArgs, putAppendReply)
 		if !ok {
-			time.Sleep(time.Millisecond * 20)
 			log.Println("PBServer.PutAppend failed")
-			ck.cacheView()
-			primary = ck.primary()
+			time.Sleep(viewservice.PingInterval)
+			primary = ck.cacheView()
 
 			continue
 		}
 
-		if putAppendReply.Err == OK {
-			break
+		if putAppendReply.Err != OK {
+			primary = ck.cacheView()
+			continue
 		}
 
-		if putAppendReply.Err == ErrWrongServer {
-			ck.cacheView()
-			primary = ck.primary()
-		}
-		continue
+		break
 	}
 
-	log.Println("PutAppend", key, value, op, "Finished")
+	// log.Println("PutAppend", key, value, op, "Finished")
 }
 
 //

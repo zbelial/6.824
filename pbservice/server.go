@@ -44,15 +44,6 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	// if pb.isdead() {
-	// 	log.Println("PBServer is dead")
-
-	// 	reply.Err = ErrWrongServer
-	// 	reply.Value = ""
-
-	// 	return nil
-	// }
-
 	if pb.isPrimary() {
 		backup := pb.view.Backup
 		if backup != "" {
@@ -108,14 +99,6 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	defer pb.mu.Unlock()
 
 	log.Println("PBServer PutAppend", args.Type, args.Key, args.Value, args.ReqType, args.Unique)
-
-	// if pb.isdead() {
-	// 	log.Println("PBServer is dead")
-
-	// 	reply.Err = ErrWrongServer
-
-	// 	return nil
-	// }
 
 	if pb.isPrimary() {
 		// log.Println("pb is Primary")
