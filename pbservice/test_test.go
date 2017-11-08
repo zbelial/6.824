@@ -433,13 +433,16 @@ func checkAppends(t *testing.T, v string, counts []int) {
 			wanted := "x " + strconv.Itoa(i) + " " + strconv.Itoa(j) + " y"
 			off := strings.Index(v, wanted)
 			if off < 0 {
+				log.Printf("checkAppends wanted %s\n", wanted)
 				t.Fatalf("missing element in Append result")
 			}
 			off1 := strings.LastIndex(v, wanted)
 			if off1 != off {
+				log.Printf("checkAppends wanted %s, off %d, off1 %d\n", wanted, off, off1)
 				t.Fatalf("duplicate element in Append result")
 			}
 			if off <= lastoff {
+				log.Printf("checkAppends off %d, lastoff %d\n", off, lastoff)
 				t.Fatalf("wrong order for element in Append result")
 			}
 			lastoff = off
@@ -559,7 +562,7 @@ func tTestConcurrentSameAppend(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func tTestConcurrentSameUnreliable(t *testing.T) {
+func TestConcurrentSameUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -790,7 +793,7 @@ func tTestRepeatedCrash(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func TestRepeatedCrashUnreliable(t *testing.T) {
+func tTestRepeatedCrashUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -830,7 +833,7 @@ func TestRepeatedCrashUnreliable(t *testing.T) {
 		for atomic.LoadInt32(&done) == 0 {
 			i := rr.Int() % nservers
 			// fmt.Printf("%v killing %v\n", ts(), 5001+i)
-			log.Printf("Killing %v\n", i)
+			log.Printf("Killing %v\n", i+1)
 			sa[i].kill()
 
 			// wait long enough for new view to form, backup to be initialized

@@ -20,7 +20,8 @@ type PutAllArgs struct {
 }
 
 type PutAllReply struct {
-	Err Err
+	Err        Err
+	TotalCount int
 }
 
 // Put or Append
@@ -43,7 +44,6 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key     string
 	ReqType string //forword; direct
-	Unique  int64
 	// You'll have to add definitions here.
 }
 

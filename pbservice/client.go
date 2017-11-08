@@ -13,6 +13,7 @@ type Clerk struct {
 	// Your declarations here
 	mu   sync.Mutex
 	view viewservice.View
+	me   string
 }
 
 // this may come in handy.
@@ -27,6 +28,7 @@ func MakeClerk(vshost string, me string) *Clerk {
 	ck := new(Clerk)
 	ck.vs = viewservice.MakeClerk(me, vshost)
 	// Your ck.* initializations here
+	ck.me = me
 
 	return ck
 }
@@ -51,6 +53,19 @@ func MakeClerk(vshost string, me string) *Clerk {
 func call(srv string, rpcname string, args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("unix", srv)
 	if errx != nil {
+		if rpcname == "PBServer.Get" {
+			var a = args.(*GetArgs)
+			log.Println("Clerk call", rpcname, a.Key, a.ReqType, srv, errx)
+		} else if rpcname == "PBServer.PutAppend" {
+			var a = args.(*PutAppendArgs)
+			log.Println("Clerk call", rpcname, a.Type, a.Key, a.Value, a.ReqType, a.Unique, srv, errx)
+		} else if rpcname == "PBServer.PutAll" {
+			// var a = args.(*PutAllArgs)
+			log.Println("Clerk call", rpcname, srv, errx)
+		} else {
+			log.Println("Clerk call", rpcname, srv, errx)
+		}
+
 		return false
 	}
 	defer c.Close()
@@ -60,7 +75,19 @@ func call(srv string, rpcname string, args interface{}, reply interface{}) bool 
 		return true
 	}
 
-	log.Println(err)
+	if rpcname == "PBServer.Get" {
+		var a = args.(*GetArgs)
+		log.Println("Clerk call", rpcname, a.Key, a.ReqType, srv, err)
+	} else if rpcname == "PBServer.PutAppend" {
+		var a = args.(*PutAppendArgs)
+		log.Println("Clerk call", rpcname, a.Type, a.Key, a.Value, a.ReqType, a.Unique, srv, err)
+	} else if rpcname == "PBServer.PutAll" {
+		// var a = args.(*PutAllArgs)
+		log.Println("Clerk call", rpcname, srv, err)
+	} else {
+		log.Println("Clerk call", rpcname, srv, err)
+	}
+
 	return false
 }
 
@@ -79,16 +106,16 @@ func (ck *Clerk) Get(key string) string {
 
 	v := ""
 	defer func() {
-		log.Printf("Get %s returns %s\n", key, v)
+		log.Printf("Clerk %s Get %s returns %s\n", ck.me, key, v)
 	}()
 
-	log.Println("Get", key)
+	log.Println("Clerk", ck.me, "Get", key)
 	primary := ck.primary()
 	if primary == "" {
 		primary = ck.cacheView()
 	}
 
-	getArgs := &GetArgs{key, FORWORD, nrand()}
+	getArgs := &GetArgs{key, FORWORD}
 	getReply := &GetReply{}
 
 	for true {
@@ -145,8 +172,6 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	ck.mu.Lock()
 	defer ck.mu.Unlock()
 
-	// log.Println("PutAppend", key, value, op)
-
 	putAppendArgs := &PutAppendArgs{key, value, op, DIRECT, nrand()}
 	putAppendReply := &PutAppendReply{}
 
@@ -155,10 +180,12 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		primary = ck.cacheView()
 	}
 
+	log.Println("Clerk", ck.me, "PutAppend", key, value, op, primary)
+
 	for true {
 		ok := call(primary, "PBServer.PutAppend", putAppendArgs, putAppendReply)
 		if !ok {
-			log.Println("PBServer.PutAppend failed")
+			// log.Printf("Clerk PBServer.PutAppend %s, %s failed, %s\n", key, value, primary)
 			time.Sleep(viewservice.PingInterval)
 			primary = ck.cacheView()
 
@@ -173,7 +200,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		break
 	}
 
-	// log.Println("PutAppend", key, value, op, "Finished")
+	log.Println("Clerk", ck.me, "PutAppend", key, value, op, primary, "Finished")
 }
 
 //
