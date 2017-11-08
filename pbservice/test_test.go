@@ -33,7 +33,7 @@ func port(tag string, host int) string {
 	return s
 }
 
-func tTestBasicFail(t *testing.T) {
+func TestBasicFail(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -177,7 +177,7 @@ func tTestBasicFail(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func tTestAtMostOnce(t *testing.T) {
+func TestAtMostOnce(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -233,7 +233,7 @@ func tTestAtMostOnce(t *testing.T) {
 }
 
 // Put right after a backup dies.
-func tTestFailPut(t *testing.T) {
+func TestFailPut(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -324,7 +324,7 @@ func tTestFailPut(t *testing.T) {
 // do a bunch of concurrent Put()s on the same key,
 // then check that primary and backup have identical values.
 // i.e. that they processed the Put()s in the same order.
-func tTestConcurrentSame(t *testing.T) {
+func TestConcurrentSame(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -453,7 +453,7 @@ func checkAppends(t *testing.T, v string, counts []int) {
 // do a bunch of concurrent Append()s on the same key,
 // then check that primary and backup have identical values.
 // i.e. that they processed the Append()s in the same order.
-func tTestConcurrentSameAppend(t *testing.T) {
+func TestConcurrentSameAppend(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -679,7 +679,7 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 }
 
 // constant put/get while crashing and restarting servers
-func tTestRepeatedCrash(t *testing.T) {
+func TestRepeatedCrash(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -793,7 +793,7 @@ func tTestRepeatedCrash(t *testing.T) {
 	time.Sleep(time.Second)
 }
 
-func tTestRepeatedCrashUnreliable(t *testing.T) {
+func TestRepeatedCrashUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -967,7 +967,7 @@ func proxy(t *testing.T, port string, delay *int32) {
 	}()
 }
 
-func tTestPartition1(t *testing.T) {
+func TestPartition1(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)
@@ -1062,7 +1062,7 @@ func tTestPartition1(t *testing.T) {
 	vs.Kill()
 }
 
-func tTestPartition2(t *testing.T) {
+func TestPartition2(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	log.SetOutput(os.Stdout)

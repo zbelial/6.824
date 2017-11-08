@@ -16,7 +16,8 @@ const (
 type Err string
 
 type PutAllArgs struct {
-	Records map[string]string
+	Records   map[string]string
+	UniqueMap map[int64]bool
 }
 
 type PutAllReply struct {
@@ -39,6 +40,7 @@ type PutAppendArgs struct {
 
 type PutAppendReply struct {
 	Err Err
+	Has string //for debug
 }
 
 type GetArgs struct {

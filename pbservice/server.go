@@ -134,6 +134,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		log.Println("PBServer PutAppend", args.Type, args.Key, args.Value, args.ReqType, args.Unique, pb.me, reply.Err)
 	}()
 
+	reply.Has = "no"
 	if pb.isPrimary() {
 		// log.Println("pb is Primary")
 
@@ -146,15 +147,25 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		v, ok := pb.uniqueMap[args.Unique]
 		if ok && v {
 			reply.Err = OK
+			reply.Has = "yes"
 			return nil
 		}
 
 		pb.lastUnique = args.Unique
+
+		var value = args.Value
+		if args.Type == APPEND {
+			v, ok := pb.records[args.Key]
+			if ok {
+				value = fmt.Sprintf("%s%s", v, args.Value)
+			}
+		}
+
 		backup := pb.view.Backup
 		if backup != "" {
 			// log.Printf("PubAppend forward to %s from %s\n", backup, pb.me)
 
-			bargs := &PutAppendArgs{args.Key, args.Value, args.Type, FORWORD, args.Unique}
+			bargs := &PutAppendArgs{args.Key, value, PUT, FORWORD, args.Unique}
 			breply := &PutAppendReply{}
 
 			err := call(backup, "PBServer.PutAppend", bargs, breply)
@@ -168,16 +179,7 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 			}
 		}
 
-		if args.Type == PUT {
-			pb.records[args.Key] = args.Value
-		} else if args.Type == APPEND {
-			v, ok := pb.records[args.Key]
-			if !ok {
-				pb.records[args.Key] = args.Value
-			} else {
-				pb.records[args.Key] = fmt.Sprintf("%s%s", v, args.Value)
-			}
-		}
+		pb.records[args.Key] = value
 		pb.uniqueMap[args.Unique] = true
 
 		reply.Err = OK
@@ -198,22 +200,13 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 		}
 
 		pb.lastUnique = args.Unique
-		v, ok := pb.uniqueMap[args.Unique]
-		if ok && v {
-			reply.Err = OK
-			return nil
-		}
+		// v, ok := pb.uniqueMap[args.Unique]
+		// if ok && v {
+		// 	reply.Err = OK
+		// 	return nil
+		// }
 
-		if args.Type == PUT {
-			pb.records[args.Key] = args.Value
-		} else if args.Type == APPEND {
-			v, ok := pb.records[args.Key]
-			if !ok {
-				pb.records[args.Key] = args.Value
-			} else {
-				pb.records[args.Key] = fmt.Sprintf("%s%s", v, args.Value)
-			}
-		}
+		pb.records[args.Key] = args.Value
 		pb.uniqueMap[args.Unique] = true
 
 		reply.Err = OK
@@ -250,6 +243,10 @@ func (pb *PBServer) PutAll(args *PutAllArgs, reply *PutAllReply) error {
 		count++
 		pb.records[k] = v
 	}
+	pb.uniqueMap = make(map[int64]bool)
+	for k, v := range args.UniqueMap {
+		pb.uniqueMap[k] = v
+	}
 
 	reply.TotalCount = count
 	reply.Err = OK
@@ -281,7 +278,7 @@ func (pb *PBServer) tick() {
 		log.Printf("PBServer tick, Me %s, P %s, B %s, VN %d, old B %s\n", pb.me, v.Primary, v.Backup, v.Viewnum, pb.view.Backup)
 		if pb.isPrimary2(v.Primary) && v.Backup != pb.view.Backup && v.Backup != "" {
 			//TODO transfer data
-			args := &PutAllArgs{pb.records}
+			args := &PutAllArgs{pb.records, pb.uniqueMap}
 			reply := &PutAllReply{}
 			log.Printf("PBServer PutAll from %s to %s\n", pb.me, v.Backup)
 			ok := call(v.Backup, "PBServer.PutAll", args, reply)
