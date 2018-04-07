@@ -211,8 +211,8 @@ func DoMap(JobNumber int, fileName string, nreduce int, Map func(string) *list.L
 	file.Close()
 	res := Map(string(b))
 	// XXX a bit inefficient. could open r files and run over list once
-	encs := make([]*json.Encoder, 0, JobNumber)
-	files := make([]*os.File, 0, JobNumber)
+	encs := make([]*json.Encoder, 0, nreduce)
+	files := make([]*os.File, 0, nreduce)
 	for r := 0; r < nreduce; r++ {
 		file, err = os.Create(ReduceName(fileName, JobNumber, r))
 		if err != nil {
@@ -232,24 +232,6 @@ func DoMap(JobNumber int, fileName string, nreduce int, Map func(string) *list.L
 			log.Fatal("DoMap: marshall ", err)
 		}
 	}
-
-	// for r := 0; r < nreduce; r++ {
-	// 	file, err = os.Create(ReduceName(fileName, JobNumber, r))
-	// 	if err != nil {
-	// 		log.Fatal("DoMap: create ", err)
-	// 	}
-	// 	enc := json.NewEncoder(file)
-	// 	for e := res.Front(); e != nil; e = e.Next() {
-	// 		kv := e.Value.(KeyValue)
-	// 		if ihash(kv.Key)%uint32(nreduce) == uint32(r) {
-	// 			err := enc.Encode(&kv)
-	// 			if err != nil {
-	// 				log.Fatal("DoMap: marshall ", err)
-	// 			}
-	// 		}
-	// 	}
-	// 	file.Close()
-	// }
 }
 
 func MergeName(fileName string, ReduceJob int) string {
