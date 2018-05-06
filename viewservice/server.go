@@ -9,8 +9,6 @@ import "fmt"
 import "os"
 import "sync/atomic"
 
-// import "errors"
-
 type ViewServer struct {
 	mu       sync.Mutex
 	l        net.Listener
@@ -18,70 +16,49 @@ type ViewServer struct {
 	rpccount int32 // for testing
 	me       string
 
-	// Your declarations here.
-	recentTimes    map[string]time.Time //recentTime
-	currView       View                 //
-	idleServers    []string             //volunteers
-	serverMap      map[string]bool      //all servers, including primary and backup
-	serverLastPing map[string]PingArgs
-	restartServer  map[string]bool
-	primaryAcked   bool //
-	primaryRestart bool
-	backupRestart  bool
-}
 
-func (vs *ViewServer) pickFirstIdleServer() string {
-	rs := ""
-	if len(vs.idleServers) > 0 {
-		rs = vs.idleServers[0]
-		vs.idleServers = vs.idleServers[1:]
-	}
-
-	return rs
-}
-
-func (vs *ViewServer) addIdleServer(server string) {
-	vs.idleServers = append(vs.idleServers, server)
-}
-
-func (vs *ViewServer) hasIdleServer() bool {
-	return len(vs.idleServers) > 0
+	//           Your declarations here.
+	pingTimes    map[string]time.Time
+	recentViews  map[string]uint
+	view         View
+	acknowledged bool
+	volunteers   map[string]int32
+	startup      bool
 }
 
 //
 // server Ping RPC handler.
 //
 func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
+	// Your code here.
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
-	defer func() {
-		log.Printf("ViewServer Ping Me %s, VN %d, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, args.Viewnum, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
-	}()
-	log.Printf("ViewServer Ping Me %s, VN %d, C.VN %d, P %s, B %s, Acked %v, Idle %d\n", args.Me, args.Viewnum, vs.currView.Viewnum, vs.currView.Primary, vs.currView.Backup, vs.primaryAcked, len(vs.idleServers))
+	
+	now := time.Now()
+	vs.pingTimes[args.Me] = now
+	vs.recentViews[args.Me] = args.Viewnum
 
-	vs.recentTimes[args.Me] = time.Now()
-	_, has := vs.serverMap[args.Me]
-	if !has {
-		vs.serverMap[args.Me] = true
-		vs.addIdleServer(args.Me)
+	if vs.startup {
+		vs.startup = false
+		vs.view.Primary = args.Me
+		vs.view.Viewnum = 1
+		vs.acknowledged = false
+
+		reply.View = vs.view
+
+		return nil
 	}
 
-	if args.Viewnum == 0 {
-		if has {
-			v := vs.serverLastPing[args.Me]
-			if v.Viewnum != 0 {
-				vs.restartServer[args.Me] = true
-			}
+	if args.Me == vs.view.Primary {
+		if args.Viewnum == vs.view.Viewnum {
+			vs.acknowledged = true
 		}
+	} else if args.Me == vs.view.Backup {
+		
+	} else {
+		vs.volunteers[args.Me] = 1
 	}
-
-	if vs.currView.Primary == args.Me && vs.currView.Viewnum == args.Viewnum {
-		vs.primaryAcked = true
-	}
-
-	vs.serverLastPing[args.Me] = *args
-
-	reply.View = vs.currView
+	reply.View = vs.view
 
 	return nil
 }
@@ -95,14 +72,11 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
 
-	if vs.currView.Primary != "" || vs.currView.Backup != "" {
-		log.Printf("ViewServer Get Primary %s, Backup %s, Viewnum %d \n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum)
-	}
-
-	reply.View = vs.currView
+	reply.View = vs.view
 
 	return nil
 }
+
 
 //
 // tick() is called once per PingInterval; it should notice
@@ -116,77 +90,83 @@ func (vs *ViewServer) tick() {
 	defer vs.mu.Unlock()
 
 	now := time.Now()
-	log.Printf("ViewServer tick P %s, B %s, C.VN %d, Acked %v, Idle %d\n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum, vs.primaryAcked, len(vs.idleServers))
 
-	defer func() {
-		log.Printf("ViewServer tick P %s, B %s, C.VN %d, Acked %v, Idle %d\n", vs.currView.Primary, vs.currView.Backup, vs.currView.Viewnum, vs.primaryAcked, len(vs.idleServers))
-	}()
+	if vs.view.Primary != "" {
+		vt := vs.pingTimes[vs.view.Primary]
+		if now.Sub(vt) > DeadPings * PingInterval { //primary died
+			delete(vs.pingTimes, vs.view.Primary)
 
-	if vs.currView.Viewnum == 0 && vs.hasIdleServer() {
-		vs.currView.Viewnum++
-		vs.currView.Primary = vs.pickFirstIdleServer()
-		vs.primaryAcked = false
-	}
-
-	for s, t := range vs.recentTimes {
-		if now.Sub(t) > PingInterval*DeadPings {
-			log.Printf("ViewServer Server %s is inactive", s)
-
-			delete(vs.serverMap, s)
-			delete(vs.recentTimes, s)
-			delete(vs.serverLastPing, s)
-			delete(vs.restartServer, s)
-			if s == vs.currView.Primary {
-				if vs.primaryAcked && vs.currView.Backup != "" {
-					vs.currView.Primary = vs.currView.Backup
-					vs.currView.Backup = vs.pickFirstIdleServer()
-					vs.currView.Viewnum++
-					vs.primaryAcked = false
+			if vs.acknowledged {
+				if vs.view.Backup != "" {
+					vs.advance(true)
 				}
-			} else if s == vs.currView.Backup && vs.hasIdleServer() {
-				if vs.primaryAcked {
-					vs.currView.Backup = vs.pickFirstIdleServer()
-					vs.currView.Viewnum++
-					vs.primaryAcked = false
-				}
-			} else {
-				var t []string
-				for _, v := range vs.idleServers {
-					if v != s {
-						t = append(t, v)
+			}
+		} else {
+			pv := vs.recentViews[vs.view.Primary]
+			if pv == 0 { // primary restarted
+				if vs.acknowledged {
+					if vs.view.Backup != "" {
+						vs.volunteers[vs.view.Primary] = 1
+						vs.advance(true)
 					}
 				}
-
-				vs.idleServers = t
 			}
 		}
 	}
 
-	for s := range vs.restartServer {
-		if s == vs.currView.Primary {
-			if vs.primaryAcked && vs.currView.Backup != "" {
-				vs.currView.Primary = vs.currView.Backup
-				vs.currView.Backup = vs.pickFirstIdleServer()
-				vs.currView.Viewnum++
-				vs.primaryAcked = false
+	if vs.view.Backup != "" {
+		vt := vs.pingTimes[vs.view.Backup]
+		if now.Sub(vt) > DeadPings * PingInterval { //backup died
+			delete(vs.pingTimes, vs.view.Backup)
+
+			if vs.acknowledged {
+				vs.advance(false)
 			}
-		} else if s == vs.currView.Backup && vs.hasIdleServer() {
-			if vs.primaryAcked {
-				vs.currView.Backup = vs.pickFirstIdleServer()
-				vs.currView.Viewnum++
-				vs.primaryAcked = false
+		}else {
+			pv := vs.recentViews[vs.view.Backup]
+			if pv == 0 { //back restarted
+				if vs.acknowledged {
+					vs.volunteers[vs.view.Backup] = 1
+					vs.advance(false)
+				}
 			}
 		}
+	} else {
+		if vs.acknowledged && len(vs.volunteers) > 0 { //no backup and there is an idle server
+			vs.advance(false)
+		}
 	}
-
-	if vs.primaryAcked && vs.currView.Backup == "" && vs.hasIdleServer() {
-		vs.primaryAcked = false
-		vs.currView.Backup = vs.pickFirstIdleServer()
-		vs.currView.Viewnum++
+	
+	for k, t := range vs.pingTimes {
+		if now.Sub(t) >= DeadPings * PingInterval {
+			delete(vs.pingTimes, k)
+			delete(vs.volunteers, k)
+			delete(vs.recentViews, k)
+		}
 	}
-
 }
 
+func (vs *ViewServer) advance(primary bool) {
+	if primary {
+		vs.view.Primary = vs.view.Backup
+	}
+	vs.view.Backup = vs.getVolunteer()
+	vs.acknowledged = false
+	vs.view.Viewnum += 1
+}
+
+func (vs *ViewServer) getVolunteer() string {
+	var v string
+	if len(vs.volunteers) > 0 {
+		for k, _ := range vs.volunteers {
+			v = k
+			break
+		}
+		delete(vs.volunteers, v)
+	}
+
+	return v
+}
 //
 // tell the server to shut itself down.
 // for testing.
@@ -213,11 +193,11 @@ func StartServer(me string) *ViewServer {
 	vs := new(ViewServer)
 	vs.me = me
 	// Your vs.* initializations here.
-	vs.recentTimes = make(map[string]time.Time)
-	vs.primaryAcked = false
-	vs.serverMap = make(map[string]bool)
-	vs.serverLastPing = make(map[string]PingArgs)
-	vs.restartServer = make(map[string]bool)
+	vs.pingTimes    = make(map[string]time.Time)
+	vs.volunteers   = make(map[string]int32)
+	vs.recentViews  = make(map[string]uint)
+	vs.acknowledged = false
+	vs.startup      = true
 
 	// tell net/rpc about our RPC server and handlers.
 	rpcs := rpc.NewServer()
