@@ -1,18 +1,18 @@
 package pbservice
 
+import "github.com/zbelial/6.824/viewservice"
+
+// import "viewservice"
 import "net"
 import "fmt"
 import "net/rpc"
 import "log"
 import "time"
-import "viewservice"
 import "sync"
 import "sync/atomic"
 import "os"
 import "syscall"
 import "math/rand"
-
-
 
 type PBServer struct {
 	mu         sync.Mutex
@@ -22,8 +22,9 @@ type PBServer struct {
 	me         string
 	vs         *viewservice.Clerk
 	// Your declarations here.
+	kvs  map[string]string
+	view viewservice.View
 }
-
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
@@ -32,15 +33,23 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	return nil
 }
 
-
 func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 
 	// Your code here.
 
+	return nil
+}
+
+func (pb *PBServer) TransferAll(args *PutAppendArgs, reply *PutAppendReply) error {
+
+	// Your code here.
 
 	return nil
 }
 
+func (pb *PBServer) TransferToBackup() error {
+	return nil
+}
 
 //
 // ping the viewserver periodically.
@@ -51,6 +60,31 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 func (pb *PBServer) tick() {
 
 	// Your code here.
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	_, err := pb.vs.Ping(pb.view.Viewnum)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	//TODO
+	// oldView := pb.view
+	// if view.Viewnum != pb.view.Viewnum {
+	// 	pb.view = view
+	// 	if oldView.Primary == pb.me && view.Primary == pb.me && oldView.Backup != view.Backup && view.Backup != "" {
+	// 		pb.TransferToBackup()
+	// 	}
+	// }
+}
+
+func (pb *PBServer) isPrimary() bool {
+	return pb.view.Primary == pb.me
+}
+
+func (pb *PBServer) isBackup() bool {
+	return pb.view.Backup == pb.me
 }
 
 // tell the server to shut itself down.
@@ -77,7 +111,6 @@ func (pb *PBServer) setunreliable(what bool) {
 func (pb *PBServer) isunreliable() bool {
 	return atomic.LoadInt32(&pb.unreliable) != 0
 }
-
 
 func StartServer(vshost string, me string) *PBServer {
 	pb := new(PBServer)

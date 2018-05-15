@@ -1,16 +1,18 @@
 package pbservice
 
-import "viewservice"
+import "github.com/zbelial/6.824/viewservice"
 import "net/rpc"
 import "fmt"
 
 import "crypto/rand"
 import "math/big"
+import "time"
 
 
 type Clerk struct {
 	vs *viewservice.Clerk
 	// Your declarations here
+	Primary string
 }
 
 // this may come in handy.
@@ -25,6 +27,7 @@ func MakeClerk(vshost string, me string) *Clerk {
 	ck := new(Clerk)
 	ck.vs = viewservice.MakeClerk(me, vshost)
 	// Your ck.* initializations here
+	ck.Primary = ck.vs.Primary()
 
 	return ck
 }
@@ -84,6 +87,38 @@ func (ck *Clerk) Get(key string) string {
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	// Your code here.
+	args := &PutAppendArgs{}
+	args.Key    = key
+	args.Value  = value
+	args.Type   = op
+	args.RandId = nrand()
+
+	var reply PutAppendReply
+	for {
+		if ck.Primary == "" {
+			ck.RefreshPrimary()
+		}
+		ok := call(ck.Primary, "PBServer.PutAppend", args, &reply)
+		if !ok {
+			ck.RefreshPrimary()
+			continue
+		}
+		if reply.Err == OK {
+			break
+		}
+
+		if reply.Err == ErrWrongServer {
+			ck.RefreshPrimary()
+		}
+	}
+}
+
+func (ck *Clerk) RefreshPrimary() {
+	ck.Primary = ""
+	for ck.Primary == "" {
+		time.Sleep(10 * time.Millisecond)
+		ck.Primary = ck.vs.Primary()
+	}
 }
 
 //

@@ -6,6 +6,11 @@ const (
 	ErrWrongServer = "ErrWrongServer"
 )
 
+const (
+	PUT    = "Put"
+	APPEND = "Append"
+)
+
 type Err string
 
 // Put or Append
@@ -13,6 +18,8 @@ type PutAppendArgs struct {
 	Key   string
 	Value string
 	// You'll have to add definitions here.
+	Type   string  //PUT/APPEND
+	RandId int64  //随机数
 
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
@@ -32,5 +39,12 @@ type GetReply struct {
 	Value string
 }
 
+type TransferAllArgs struct {
+	KVs map[string]string
+}
+
+type TransferAllReply struct {
+	Err Err
+}
 
 // Your RPC definitions here.
