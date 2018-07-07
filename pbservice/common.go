@@ -18,8 +18,9 @@ type PutAppendArgs struct {
 	Key   string
 	Value string
 	// You'll have to add definitions here.
-	Type   string  //PUT/APPEND
-	RandId int64  //随机数
+	Type   string //PUT/APPEND
+	RandID int64  //随机数
+	Direct bool   //primary转发or直接请求
 
 	// Field names must start with capital letters,
 	// otherwise RPC will break.

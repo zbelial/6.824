@@ -22,8 +22,8 @@ type PBServer struct {
 	me         string
 	vs         *viewservice.Clerk
 	// Your declarations here.
-	kvs  map[string]string
 	view viewservice.View
+	kvs  map[string]string
 }
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
@@ -36,6 +36,26 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 
 	// Your code here.
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	if pb.isPrimary() {
+		if !args.Direct {
+			reply.Err = ErrWrongServer
+		} else {
+			if pb.view.Backup != "" {
+
+			}
+		}
+	} else if pb.isBackup() {
+		if args.Direct {
+			reply.Err = ErrWrongServer
+		} else {
+			v, ok := pb.kvs[args.Key]
+		}
+	} else {
+		reply.Err = ErrWrongServer
+	}
 
 	return nil
 }
@@ -48,6 +68,7 @@ func (pb *PBServer) TransferAll(args *PutAppendArgs, reply *PutAppendReply) erro
 }
 
 func (pb *PBServer) TransferToBackup() error {
+	//TODO
 	return nil
 }
 
@@ -63,20 +84,20 @@ func (pb *PBServer) tick() {
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
-	_, err := pb.vs.Ping(pb.view.Viewnum)
+	view, err := pb.vs.Ping(pb.view.Viewnum)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	//TODO
-	// oldView := pb.view
-	// if view.Viewnum != pb.view.Viewnum {
-	// 	pb.view = view
-	// 	if oldView.Primary == pb.me && view.Primary == pb.me && oldView.Backup != view.Backup && view.Backup != "" {
-	// 		pb.TransferToBackup()
-	// 	}
-	// }
+	//TODO 根据测试调整
+	oldView := pb.view
+	if view.Viewnum != pb.view.Viewnum {
+		pb.view = view
+		if oldView.Primary == pb.me && view.Primary == pb.me && oldView.Backup != view.Backup && view.Backup != "" {
+			pb.TransferToBackup()
+		}
+	}
 }
 
 func (pb *PBServer) isPrimary() bool {

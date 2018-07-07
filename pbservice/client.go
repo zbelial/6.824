@@ -8,7 +8,6 @@ import "crypto/rand"
 import "math/big"
 import "time"
 
-
 type Clerk struct {
 	vs *viewservice.Clerk
 	// Your declarations here
@@ -31,7 +30,6 @@ func MakeClerk(vshost string, me string) *Clerk {
 
 	return ck
 }
-
 
 //
 // call() sends an RPC to the rpcname handler on server srv
@@ -88,10 +86,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	// Your code here.
 	args := &PutAppendArgs{}
-	args.Key    = key
-	args.Value  = value
-	args.Type   = op
-	args.RandId = nrand()
+	args.Key = key
+	args.Value = value
+	args.Type = op
+	args.RandID = nrand()
 
 	var reply PutAppendReply
 	for {
