@@ -16,13 +16,12 @@ type ViewServer struct {
 	rpccount int32 // for testing
 	me       string
 
-
 	//           Your declarations here.
-	pingTimes    map[string]time.Time
-	recentViews  map[string]uint
 	view         View
+	pingTimes    map[string]time.Time //记录string对应的server最近ping的时间
+	recentViews  map[string]uint      //记录string对应的server所知的最新viewnum
+	volunteers   map[string]int32     //记录string对应的server作为空闲server
 	acknowledged bool
-	volunteers   map[string]int32
 	startup      bool
 }
 
@@ -33,7 +32,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	// Your code here.
 	vs.mu.Lock()
 	defer vs.mu.Unlock()
-	
+
 	now := time.Now()
 	vs.pingTimes[args.Me] = now
 	vs.recentViews[args.Me] = args.Viewnum
@@ -54,7 +53,7 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 			vs.acknowledged = true
 		}
 	} else if args.Me == vs.view.Backup {
-		
+
 	} else {
 		vs.volunteers[args.Me] = 1
 	}
@@ -77,7 +76,6 @@ func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
 	return nil
 }
 
-
 //
 // tick() is called once per PingInterval; it should notice
 // if servers have died or recovered, and change the view
@@ -93,7 +91,7 @@ func (vs *ViewServer) tick() {
 
 	if vs.view.Primary != "" {
 		vt := vs.pingTimes[vs.view.Primary]
-		if now.Sub(vt) > DeadPings * PingInterval { //primary died
+		if now.Sub(vt) > DeadPings*PingInterval { //primary died
 			delete(vs.pingTimes, vs.view.Primary)
 
 			if vs.acknowledged {
@@ -116,13 +114,13 @@ func (vs *ViewServer) tick() {
 
 	if vs.view.Backup != "" {
 		vt := vs.pingTimes[vs.view.Backup]
-		if now.Sub(vt) > DeadPings * PingInterval { //backup died
+		if now.Sub(vt) > DeadPings*PingInterval { //backup died
 			delete(vs.pingTimes, vs.view.Backup)
 
 			if vs.acknowledged {
 				vs.advance(false)
 			}
-		}else {
+		} else {
 			pv := vs.recentViews[vs.view.Backup]
 			if pv == 0 { //back restarted
 				if vs.acknowledged {
@@ -136,9 +134,9 @@ func (vs *ViewServer) tick() {
 			vs.advance(false)
 		}
 	}
-	
+
 	for k, t := range vs.pingTimes {
-		if now.Sub(t) >= DeadPings * PingInterval {
+		if now.Sub(t) >= DeadPings*PingInterval {
 			delete(vs.pingTimes, k)
 			delete(vs.volunteers, k)
 			delete(vs.recentViews, k)
@@ -147,6 +145,11 @@ func (vs *ViewServer) tick() {
 }
 
 func (vs *ViewServer) advance(primary bool) {
+	log.Println("ViewServer - advance", primary, vs.view.Primary, vs.view.Backup, vs.view.Viewnum)
+	defer func() {
+		log.Println("ViewServer - advance", primary, vs.view.Primary, vs.view.Backup, vs.view.Viewnum, "Finished")
+	}()
+
 	if primary {
 		vs.view.Primary = vs.view.Backup
 	}
@@ -167,6 +170,7 @@ func (vs *ViewServer) getVolunteer() string {
 
 	return v
 }
+
 //
 // tell the server to shut itself down.
 // for testing.
@@ -193,11 +197,11 @@ func StartServer(me string) *ViewServer {
 	vs := new(ViewServer)
 	vs.me = me
 	// Your vs.* initializations here.
-	vs.pingTimes    = make(map[string]time.Time)
-	vs.volunteers   = make(map[string]int32)
-	vs.recentViews  = make(map[string]uint)
+	vs.pingTimes = make(map[string]time.Time)
+	vs.volunteers = make(map[string]int32)
+	vs.recentViews = make(map[string]uint)
 	vs.acknowledged = false
-	vs.startup      = true
+	vs.startup = true
 
 	// tell net/rpc about our RPC server and handlers.
 	rpcs := rpc.NewServer()

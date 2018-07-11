@@ -33,6 +33,7 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key string
 	// You'll have to add definitions here.
+	Direct bool
 }
 
 type GetReply struct {
@@ -42,6 +43,7 @@ type GetReply struct {
 
 type TransferAllArgs struct {
 	KVs map[string]string
+	IDs map[int64]bool
 }
 
 type TransferAllReply struct {

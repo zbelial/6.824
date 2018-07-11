@@ -49,7 +49,7 @@ func call(srv string, rpcname string,
 		return true
 	}
 
-	fmt.Println(err)
+	fmt.Println("viewservice call - ", err)
 	return false
 }
 

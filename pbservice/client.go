@@ -3,6 +3,7 @@ package pbservice
 import "github.com/zbelial/6.824/viewservice"
 import "net/rpc"
 import "fmt"
+import "log"
 
 import "crypto/rand"
 import "math/big"
@@ -56,12 +57,14 @@ func call(srv string, rpcname string,
 	}
 	defer c.Close()
 
+	// log.Println("pbservice call - before Call ", srv, rpcname)
+	// defer log.Println("pbservice call - after Call", srv, rpcname)
 	err := c.Call(rpcname, args, reply)
 	if err == nil {
 		return true
 	}
 
-	fmt.Println(err)
+	fmt.Println("pbservice call - ", err)
 	return false
 }
 
@@ -75,8 +78,31 @@ func call(srv string, rpcname string,
 func (ck *Clerk) Get(key string) string {
 
 	// Your code here.
+	args := &GetArgs{Key: key, Direct: true}
+	reply := &GetReply{}
 
-	return "???"
+	for {
+		if ck.Primary == "" {
+			log.Println("Clerk Get - ck.Primary is empty")
+			ck.RefreshPrimary()
+		}
+		ok := call(ck.Primary, "PBServer.Get", args, reply)
+		if !ok {
+			log.Println("Clerk Get - PBServer.Get failed")
+			ck.RefreshPrimary()
+			continue
+		}
+		if reply.Err == OK {
+			break
+		}
+
+		if reply.Err == ErrWrongServer {
+			log.Println("Clerk Get - ErrWrongServer")
+			ck.RefreshPrimary()
+		}
+	}
+
+	return reply.Value
 }
 
 //
@@ -90,23 +116,27 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Value = value
 	args.Type = op
 	args.RandID = nrand()
+	args.Direct = true
 
 	var reply PutAppendReply
 	for {
 		if ck.Primary == "" {
+			log.Println("Clerk PutAppend - ck.Primary is empty")
 			ck.RefreshPrimary()
 		}
 		ok := call(ck.Primary, "PBServer.PutAppend", args, &reply)
 		if !ok {
+			log.Println("Clerk PutAppend - call failed")
 			ck.RefreshPrimary()
 			continue
 		}
 		if reply.Err == OK {
 			break
 		}
-
 		if reply.Err == ErrWrongServer {
+			log.Println("Clerk PutAppend - ErrWrongServer")
 			ck.RefreshPrimary()
+			continue
 		}
 	}
 }
@@ -124,7 +154,7 @@ func (ck *Clerk) RefreshPrimary() {
 // must keep trying until it succeeds.
 //
 func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
+	ck.PutAppend(key, value, PUT)
 }
 
 //
@@ -132,5 +162,5 @@ func (ck *Clerk) Put(key string, value string) {
 // must keep trying until it succeeds.
 //
 func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "Append")
+	ck.PutAppend(key, value, APPEND)
 }

@@ -22,13 +22,75 @@ type PBServer struct {
 	me         string
 	vs         *viewservice.Clerk
 	// Your declarations here.
-	view viewservice.View
-	kvs  map[string]string
+	view   viewservice.View
+	kvs    map[string]string
+	ids    map[int64]bool //是否收到过id
+	synced bool           // 对于新的backup，是否已经从primary同步了所有数据
 }
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 
 	// Your code here.
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	log.Println("PBServer - Get", pb.me, args.Key, args.Direct)
+
+	defer func() {
+		// log.Println("PBServer - Get", pb.me, args.Key, args.Direct, reply.Err, reply.Value, "Finished")
+		log.Println("PBServer - Get", pb.me, args.Key, args.Direct, reply.Err, "Finished")
+	}()
+
+	reply.Err = OK
+	reply.Value = ""
+	if pb.isPrimary() {
+		if !args.Direct {
+			reply.Err = ErrWrongServer
+		} else {
+			v, ok := pb.kvs[args.Key]
+			if !ok {
+				reply.Value = ""
+			}
+			reply.Value = v
+
+			if pb.view.Backup != "" {
+				bArgs := &GetArgs{Key: args.Key, Direct: false}
+				bReply := &GetReply{}
+
+				ok := call(pb.view.Backup, "PBServer.Get", bArgs, bReply)
+				if !ok {
+					reply.Err = ErrWrongServer
+					return nil
+				}
+
+				if bReply.Err == ErrWrongServer {
+					reply.Err = ErrWrongServer
+					return nil
+				}
+
+				if reply.Value != bReply.Value {
+					reply.Err = ErrWrongServer
+					return nil
+				}
+			}
+		}
+	} else if pb.isBackup() {
+		if !pb.synced {
+			reply.Err = ErrWrongServer
+		}
+
+		if args.Direct {
+			reply.Err = ErrWrongServer
+		} else {
+			v, ok := pb.kvs[args.Key]
+			if !ok {
+				reply.Value = ""
+			}
+			reply.Value = v
+		}
+	} else {
+		reply.Err = ErrWrongServer
+	}
 
 	return nil
 }
@@ -39,19 +101,55 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	pb.mu.Lock()
 	defer pb.mu.Unlock()
 
+	log.Println("PBServer - PutAppend", pb.me, args.Key, args.Value, args.Direct, args.RandID)
+	defer func() {
+		log.Println("PBServer - PutAppend", pb.me, args.Key, args.Value, args.Direct, args.RandID, reply.Err, "Finished")
+	}()
+
+	reply.Err = OK
 	if pb.isPrimary() {
 		if !args.Direct {
 			reply.Err = ErrWrongServer
 		} else {
-			if pb.view.Backup != "" {
-
+			_, ok := pb.ids[args.RandID]
+			if !ok {
+				pb.ids[args.RandID] = true
+				pb.putAppend(args.Key, args.Value, args.Type)
 			}
+
+			if pb.view.Backup != "" {
+				bArgs := &PutAppendArgs{}
+				bReply := &PutAppendReply{}
+				bArgs.Key = args.Key
+				bArgs.Value = args.Value
+				bArgs.Type = args.Type
+				bArgs.Direct = false
+				bArgs.RandID = args.RandID
+
+				ok := call(pb.view.Backup, "PBServer.PutAppend", bArgs, bReply)
+				if !ok {
+					reply.Err = ErrWrongServer
+					return nil
+				}
+				if bReply.Err == ErrWrongServer {
+					reply.Err = ErrWrongServer
+					return nil
+				}
+			}
+
 		}
 	} else if pb.isBackup() {
+		if !pb.synced {
+			reply.Err = ErrWrongServer
+		}
 		if args.Direct {
 			reply.Err = ErrWrongServer
 		} else {
-			v, ok := pb.kvs[args.Key]
+			_, ok := pb.ids[args.RandID]
+			if !ok {
+				pb.ids[args.RandID] = true
+				pb.putAppend(args.Key, args.Value, args.Type)
+			}
 		}
 	} else {
 		reply.Err = ErrWrongServer
@@ -60,16 +158,75 @@ func (pb *PBServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error 
 	return nil
 }
 
-func (pb *PBServer) TransferAll(args *PutAppendArgs, reply *PutAppendReply) error {
+func (pb *PBServer) putAppend(key, value, opType string) {
+	v, ok := pb.kvs[key]
+	if !ok {
+		v = ""
+	}
+	if opType == APPEND {
+		pb.kvs[key] = fmt.Sprintf("%s%s", v, value)
+	} else {
+		pb.kvs[key] = value
+	}
+}
+
+func (pb *PBServer) TransferAll(args *TransferAllArgs, reply *TransferAllReply) error {
 
 	// Your code here.
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	log.Println("PBServer - TransferAll")
+	defer func() {
+		log.Println("PBServer - TransferAll", reply.Err)
+	}()
+
+	reply.Err = OK
+	if !pb.isBackup() {
+		reply.Err = ErrWrongServer
+		return nil
+	}
+
+	pb.kvs = args.KVs
+	pb.ids = args.IDs
+	pb.synced = true
 
 	return nil
 }
 
-func (pb *PBServer) TransferToBackup() error {
-	//TODO
-	return nil
+func (pb *PBServer) TransferToBackup() {
+	log.Println("PBServer - TransferToBackup", pb.view.Primary, pb.view.Backup)
+
+	pb.mu.Lock()
+	kvs := make(map[string]string)
+	for k, v := range pb.kvs {
+		kvs[k] = v
+	}
+	ids := make(map[int64]bool)
+	for k, v := range pb.ids {
+		ids[k] = v
+	}
+	args := &TransferAllArgs{KVs: kvs, IDs: ids}
+	reply := &TransferAllReply{}
+	pb.mu.Unlock()
+
+	for {
+		if !pb.isPrimary() {
+			break
+		}
+
+		ok := call(pb.view.Backup, "PBServer.TransferAll", args, reply)
+		if !ok {
+			continue
+		}
+		if reply.Err != OK {
+			log.Println("PBServer - TransferAll", reply.Err)
+			continue
+		}
+		break
+	}
+
+	log.Println("PBServer - TransferToBackup", pb.view.Primary, pb.view.Backup, reply.Err, "Finished")
 }
 
 //
@@ -90,12 +247,12 @@ func (pb *PBServer) tick() {
 		return
 	}
 
-	//TODO 根据测试调整
 	oldView := pb.view
-	if view.Viewnum != pb.view.Viewnum {
+	if view.Viewnum != oldView.Viewnum {
 		pb.view = view
-		if oldView.Primary == pb.me && view.Primary == pb.me && oldView.Backup != view.Backup && view.Backup != "" {
-			pb.TransferToBackup()
+		// if oldView.Primary == pb.me && view.Primary == pb.me && oldView.Backup != view.Backup && view.Backup != "" {
+		if pb.isPrimary() && oldView.Backup != view.Backup && view.Backup != "" {
+			go pb.TransferToBackup()
 		}
 	}
 }
@@ -138,16 +295,23 @@ func StartServer(vshost string, me string) *PBServer {
 	pb.me = me
 	pb.vs = viewservice.MakeClerk(me, vshost)
 	// Your pb.* initializations here.
+	pb.view = viewservice.View{}
+	pb.kvs = make(map[string]string)
+	pb.ids = make(map[int64]bool)
+	pb.synced = false
 
+	log.Println("StartServer - 1")
 	rpcs := rpc.NewServer()
 	rpcs.Register(pb)
 
+	log.Println("StartServer - 2")
 	os.Remove(pb.me)
 	l, e := net.Listen("unix", pb.me)
 	if e != nil {
 		log.Fatal("listen error: ", e)
 	}
 	pb.l = l
+	log.Println("StartServer - 3")
 
 	// please do not change any of the following code,
 	// or do anything to subvert it.
@@ -179,6 +343,8 @@ func StartServer(vshost string, me string) *PBServer {
 				pb.kill()
 			}
 		}
+
+		log.Println(pb.me, "is killed 1")
 	}()
 
 	go func() {
@@ -186,6 +352,7 @@ func StartServer(vshost string, me string) *PBServer {
 			pb.tick()
 			time.Sleep(viewservice.PingInterval)
 		}
+		log.Println(pb.me, "is killed 2")
 	}()
 
 	return pb

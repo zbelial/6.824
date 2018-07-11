@@ -33,8 +33,16 @@ func port(tag string, host int) string {
 	return s
 }
 
+func TestMain(m *testing.M) {
+	log.SetOutput(os.Stdout)
+
+	os.Exit(m.Run())
+}
+
 func TestBasicFail(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestBasicFail")
 
 	tag := "basic"
 	vshost := port(tag+"v", 1)
@@ -48,11 +56,14 @@ func TestBasicFail(t *testing.T) {
 
 	s1 := StartServer(vshost, port(tag, 1))
 
+	log.Println("TestBasicFail - before sleep")
 	deadtime := viewservice.PingInterval * viewservice.DeadPings
 	time.Sleep(deadtime * 2)
 	if vck.Primary() != s1.me {
 		t.Fatal("first primary never formed view")
 	}
+
+	log.Println("TestBasicFail - before Put")
 
 	ck.Put("111", "v1")
 	check(ck, "111", "v1")
@@ -178,6 +189,8 @@ func TestBasicFail(t *testing.T) {
 func TestAtMostOnce(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
+	fmt.Println("TestAtMostOnce")
+
 	tag := "tamo"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -231,6 +244,8 @@ func TestAtMostOnce(t *testing.T) {
 // Put right after a backup dies.
 func TestFailPut(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestFailPut")
 
 	tag := "failput"
 	vshost := port(tag+"v", 1)
@@ -320,6 +335,8 @@ func TestFailPut(t *testing.T) {
 // i.e. that they processed the Put()s in the same order.
 func TestConcurrentSame(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestConcurrentSame")
 
 	tag := "cs"
 	vshost := port(tag+"v", 1)
@@ -444,6 +461,8 @@ func checkAppends(t *testing.T, v string, counts []int) {
 func TestConcurrentSameAppend(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
+	fmt.Println("TestConcurrentSameAppend")
+
 	tag := "csa"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -550,6 +569,8 @@ func TestConcurrentSameAppend(t *testing.T) {
 
 func TestConcurrentSameUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestConcurrentSameUnreliable")
 
 	tag := "csu"
 	vshost := port(tag+"v", 1)
@@ -663,8 +684,10 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 }
 
 // constant put/get while crashing and restarting servers
-func TestRepeatedCrash(t *testing.T) {
+func TestRepeatedCrashKill(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestRepeatedCrashKill")
 
 	tag := "rc"
 	vshost := port(tag+"v", 1)
@@ -777,6 +800,8 @@ func TestRepeatedCrash(t *testing.T) {
 
 func TestRepeatedCrashUnreliable(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestRepeatedCrashUnreliable")
 
 	tag := "rcu"
 	vshost := port(tag+"v", 1)
@@ -949,6 +974,8 @@ func proxy(t *testing.T, port string, delay *int32) {
 func TestPartition1(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
+	fmt.Println("TestPartition1")
+
 	tag := "part1"
 	vshost := port(tag+"v", 1)
 	vs := viewservice.StartServer(vshost)
@@ -1041,6 +1068,8 @@ func TestPartition1(t *testing.T) {
 
 func TestPartition2(t *testing.T) {
 	runtime.GOMAXPROCS(4)
+
+	fmt.Println("TestPartition2")
 
 	tag := "part2"
 	vshost := port(tag+"v", 1)
