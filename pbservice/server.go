@@ -250,7 +250,6 @@ func (pb *PBServer) tick() {
 	oldView := pb.view
 	if view.Viewnum != oldView.Viewnum {
 		pb.view = view
-		// if oldView.Primary == pb.me && view.Primary == pb.me && oldView.Backup != view.Backup && view.Backup != "" {
 		if pb.isPrimary() && oldView.Backup != view.Backup && view.Backup != "" {
 			go pb.TransferToBackup()
 		}

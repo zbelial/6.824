@@ -14,5 +14,4 @@
 .glide/
 
 main/mrtmp*
-pbservice/test*.log
-viewservice/test*.log
+test*.log

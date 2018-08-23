@@ -10,6 +10,7 @@ import "math/rand"
 import crand "crypto/rand"
 import "encoding/base64"
 import "sync/atomic"
+import "log"
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -109,6 +110,12 @@ func noTestSpeed(t *testing.T) {
 
 	d := time.Since(t0)
 	fmt.Printf("20 agreements %v seconds\n", d.Seconds())
+}
+
+func TestMain(m *testing.M) {
+	log.SetOutput(os.Stdout)
+
+	os.Exit(m.Run())
 }
 
 func TestBasic(t *testing.T) {
