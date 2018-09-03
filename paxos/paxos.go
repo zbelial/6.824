@@ -227,7 +227,8 @@ func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
 
 	reply.Seq = args.Seq
 	reply.ProposeNum = args.Num
-	px.peerDones[args.Me] = args.Done + 1
+	px.peerDones[args.Me] = args.Done
+	px.freeInstance()
 
 	instance, ok := px.instances[args.Seq]
 	if !ok {
@@ -297,7 +298,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 				Seq:  seq,
 				Num:  num,
 				Me:   px.me,
-				Done: px.peerDones[px.me] - 1,
+				Done: px.peerDones[px.me],
 			}
 			pl := &PrepareReply{}
 			r := true
@@ -449,11 +450,12 @@ func (px *Paxos) localDecide(args DecidedArgs, reply *DecidedReply) {
 	instance.aNum = args.Num
 	instance.aValue = args.Value
 	instance.status = Decided
-	pv := &PaxosValue{
-		aNum:   args.Num,
-		aValue: args.Value,
-	}
-	px.acceptValues[args.Seq] = pv
+	//TODO 不记录？
+	// pv := &PaxosValue{
+	// 	aNum:   args.Num,
+	// 	aValue: args.Value,
+	// }
+	// px.acceptValues[args.Seq] = pv
 	px.instances[args.Seq] = instance
 
 	reply.Seq = args.Seq
@@ -638,6 +640,10 @@ func (px *Paxos) Max() int {
 //
 func (px *Paxos) Min() int {
 	// You code here.
+	return px.min
+}
+
+func (px *Paxos) freeInstance() {
 	minDone := math.MaxInt32
 	for i := 0; i < len(px.peerDones); i++ {
 		if px.peerDones[i] < minDone {
@@ -645,16 +651,12 @@ func (px *Paxos) Min() int {
 		}
 	}
 	if minDone+1 > px.min {
-		px.mu.Lock()
-		defer px.mu.Unlock()
 		for i := px.min; i < minDone+1; i++ {
 			delete(px.instances, i)
 		}
 
 		px.min = minDone + 1
 	}
-
-	return px.min
 }
 
 //

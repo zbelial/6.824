@@ -400,6 +400,7 @@ func TestForgetMem(t *testing.T) {
 	var m0 runtime.MemStats
 	runtime.ReadMemStats(&m0)
 	// m0.Alloc about a megabyte
+	fmt.Println("m0.Alloc", m0.Alloc)
 
 	for i := 1; i <= 10; i++ {
 		big := make([]byte, 1000000)
@@ -414,6 +415,7 @@ func TestForgetMem(t *testing.T) {
 	var m1 runtime.MemStats
 	runtime.ReadMemStats(&m1)
 	// m1.Alloc about 90 megabytes
+	fmt.Println("m1.Alloc", m1.Alloc)
 
 	for i := 0; i < npaxos; i++ {
 		pxa[i].Done(10)
@@ -432,6 +434,7 @@ func TestForgetMem(t *testing.T) {
 	var m2 runtime.MemStats
 	runtime.ReadMemStats(&m2)
 	// m2.Alloc about 10 megabytes
+	fmt.Println("m2.Alloc", m2.Alloc)
 
 	if m2.Alloc > (m1.Alloc / 2) {
 		t.Fatalf("memory use did not shrink enough")
