@@ -221,7 +221,8 @@ func TestDeaf(t *testing.T) {
 	fmt.Printf("  ... Passed\n")
 }
 
-func TestForget(t *testing.T) {
+// renamed from TestForget
+func TestForgetBasic(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	const npaxos = 6

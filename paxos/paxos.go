@@ -38,8 +38,11 @@ import "time"
 // whether an agreement has been decided,
 // or Paxos has not yet reached agreement,
 // or it was agreed but forgotten (i.e. < Min()).
+
+// Fate ..
 type Fate int
 
+//
 const (
 	Decided   Fate = iota + 1
 	Pending        // not yet decided.
@@ -55,6 +58,7 @@ const (
 // 	DecidedReject
 // )
 
+//
 const (
 	PrepareOK     = "PrepareOK"
 	PrepareReject = "PrepareReject"
@@ -65,6 +69,7 @@ const (
 	SeqDecided    = "SeqDecided"
 )
 
+// Acceptor ...
 type Acceptor struct {
 	seq    int
 	pNum   int32       // highest prepare number seen
@@ -72,11 +77,13 @@ type Acceptor struct {
 	aValue interface{} // highest accept value seen
 }
 
+// Proposer ...
 type Proposer struct {
 	seq int
 	num int32
 }
 
+// Instance ...
 type Instance struct {
 	seq    int
 	status Fate //若status为Decided，则aNum/aValue为最终被接受的值？？
@@ -88,11 +95,13 @@ type Instance struct {
 	num int32 // proposer num
 }
 
+// PaxosValue ...
 type PaxosValue struct {
 	aNum   int32
 	aValue interface{}
 }
 
+// Paxos ...
 type Paxos struct {
 	mu         sync.Mutex
 	l          net.Listener
@@ -106,10 +115,11 @@ type Paxos struct {
 	min          int                 //内存中保存的instance的最小seq
 	max          int                 //内存中保存的instance的最大seq
 	instances    map[int]*Instance   //(Min, Max]之间的所有instance
-	peerMins     []int               //保存所有peer的min
+	peerDones    []int               //保存所有peer的min
 	acceptValues map[int]*PaxosValue //每个instance的最终结果
 }
 
+// PrepareArgs ...
 type PrepareArgs struct {
 	Seq  int
 	Num  int32
@@ -117,6 +127,7 @@ type PrepareArgs struct {
 	Done int //piggybacked done
 }
 
+// PrepareReply ...
 type PrepareReply struct {
 	Seq         int
 	Status      string      // PrepareOK, PrepareReject, SeqDecided
@@ -125,6 +136,7 @@ type PrepareReply struct {
 	AcceptValue interface{} // Instance.aValue
 }
 
+// AcceptArgs ...
 type AcceptArgs struct {
 	Seq   int
 	Num   int32
@@ -132,12 +144,14 @@ type AcceptArgs struct {
 	Value interface{}
 }
 
+// AcceptReply ...
 type AcceptReply struct {
 	Seq        int
 	Status     string // AcceptOK, AcceptReject
 	ProposeNum int32  // AcceptArgs.Num
 }
 
+// DecidedArgs ...
 type DecidedArgs struct {
 	Seq   int
 	Num   int32
@@ -145,11 +159,41 @@ type DecidedArgs struct {
 	Value interface{}
 }
 
+// DecidedReply ...
 type DecidedReply struct {
 	Seq    int
 	Status string // DecidedOk, DecidedReject
 }
 
+// DoneArgs ...
+type DoneArgs struct {
+	Seq  int
+	Me   int
+	Done int
+}
+
+// DoneReply ...
+type DoneReply struct {
+}
+
+// RPCDone ...
+func (px *Paxos) RPCDone(args DoneArgs, reply *DoneReply) error {
+	log.Println("RpcDone - me:", px.me, "args.Me:", args.Me, "args.Seq", args.Seq)
+
+	px.localDone(args, reply)
+
+	return nil
+}
+
+func (px *Paxos) localDone(args DoneArgs, reply *DoneReply) {
+	log.Println("localDone - me:", px.me, "args.Me:", args.Me, "args.Seq", args.Seq, "args.Done", args.Done)
+	px.mu.Lock()
+	defer px.mu.Unlock()
+
+	px.peerDones[args.Me] = args.Done + 1
+}
+
+// Prepare ...
 func (px *Paxos) Prepare(args PrepareArgs, reply *PrepareReply) error {
 	log.Println("Prepare - me:", px.me, "args.Me:", args.Me, "args.Seq", args.Seq, "args.Num", args.Num)
 
@@ -158,12 +202,14 @@ func (px *Paxos) Prepare(args PrepareArgs, reply *PrepareReply) error {
 	return nil
 }
 
+// Accept ...
 func (px *Paxos) Accept(args AcceptArgs, reply *AcceptReply) error {
 	log.Println("Accept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
 	px.localAccept(args, reply)
 	return nil
 }
 
+// Decided ...
 func (px *Paxos) Decided(args DecidedArgs, reply *DecidedReply) error {
 	log.Println("Decided - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
 	px.localDecide(args, reply)
@@ -171,9 +217,9 @@ func (px *Paxos) Decided(args DecidedArgs, reply *DecidedReply) error {
 }
 
 func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
-	log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num)
+	log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Done", args.Done)
 	defer func() {
-		log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "Status:", reply.Status, "AcceptNum:", reply.AcceptNum, "AcceptValue:", reply.AcceptValue)
+		log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Done", args.Done, "Status:", reply.Status, "AcceptNum:", reply.AcceptNum, "AcceptValue:", reply.AcceptValue)
 	}()
 
 	px.mu.Lock()
@@ -181,7 +227,7 @@ func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
 
 	reply.Seq = args.Seq
 	reply.ProposeNum = args.Num
-	px.peerMins[args.Me] = args.Done + 1
+	px.peerDones[args.Me] = args.Done + 1
 
 	instance, ok := px.instances[args.Seq]
 	if !ok {
@@ -251,7 +297,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 				Seq:  seq,
 				Num:  num,
 				Me:   px.me,
-				Done: px.min - 1,
+				Done: px.peerDones[px.me] - 1,
 			}
 			pl := &PrepareReply{}
 			r := true
@@ -271,7 +317,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 				maxIdx = i
 			}
 			if pl.Status == PrepareOK {
-				prepareCount += 1
+				prepareCount++
 				p := PaxosValue{
 					aNum:   pl.AcceptNum,
 					aValue: pl.AcceptValue,
@@ -549,23 +595,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 //
 func (px *Paxos) Done(seq int) {
 	// Your code here.
-	px.peerMins[px.me] = seq + 1
-
-	min := math.MaxInt32
-	for i := range px.peerMins {
-		if px.peerMins[i] < min {
-			min = px.peerMins[i]
-		}
-	}
-	if min > px.min {
-		px.mu.Lock()
-		defer px.mu.Unlock()
-		for i := px.min; i < min; i++ {
-			delete(px.instances, i)
-		}
-
-		px.min = min
-	}
+	px.peerDones[px.me] = seq
 }
 
 //
@@ -608,6 +638,22 @@ func (px *Paxos) Max() int {
 //
 func (px *Paxos) Min() int {
 	// You code here.
+	minDone := math.MaxInt32
+	for i := 0; i < len(px.peerDones); i++ {
+		if px.peerDones[i] < minDone {
+			minDone = px.peerDones[i]
+		}
+	}
+	if minDone+1 > px.min {
+		px.mu.Lock()
+		defer px.mu.Unlock()
+		for i := px.min; i < minDone+1; i++ {
+			delete(px.instances, i)
+		}
+
+		px.min = minDone + 1
+	}
+
 	return px.min
 }
 
@@ -677,8 +723,11 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px.min = 0
 	px.max = -1
 	px.instances = make(map[int]*Instance)
-	px.peerMins = make([]int, len(px.peers), len(px.peers))
+	px.peerDones = make([]int, len(px.peers), len(px.peers))
 	px.acceptValues = make(map[int]*PaxosValue)
+	for i := 0; i < len(px.peers); i++ {
+		px.peerDones[i] = -1
+	}
 
 	if rpcs != nil {
 		// caller will create socket &c
