@@ -586,7 +586,7 @@ func TestRPCCount(t *testing.T) {
 //
 // many agreements (without failures)
 //
-func TestMany(t *testing.T) {
+func TestManyBasic(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
 	fmt.Printf("Test: Many instances ...\n")

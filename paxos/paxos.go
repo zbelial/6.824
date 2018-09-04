@@ -178,7 +178,7 @@ type DoneReply struct {
 
 // RPCDone ...
 func (px *Paxos) RPCDone(args DoneArgs, reply *DoneReply) error {
-	log.Println("RpcDone - me:", px.me, "args.Me:", args.Me, "args.Seq", args.Seq)
+	log.Println("RpcDone - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq)
 
 	px.localDone(args, reply)
 
@@ -186,32 +186,32 @@ func (px *Paxos) RPCDone(args DoneArgs, reply *DoneReply) error {
 }
 
 func (px *Paxos) localDone(args DoneArgs, reply *DoneReply) {
-	log.Println("localDone - me:", px.me, "args.Me:", args.Me, "args.Seq", args.Seq, "args.Done", args.Done)
+	log.Println("localDone - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Done:", args.Done)
 	px.mu.Lock()
 	defer px.mu.Unlock()
 
 	px.peerDones[args.Me] = args.Done + 1
 }
 
-// Prepare ...
-func (px *Paxos) Prepare(args PrepareArgs, reply *PrepareReply) error {
-	log.Println("Prepare - me:", px.me, "args.Me:", args.Me, "args.Seq", args.Seq, "args.Num", args.Num)
+// RPCPrepare ...
+func (px *Paxos) RPCPrepare(args PrepareArgs, reply *PrepareReply) error {
+	log.Println("RPCPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num)
 
 	px.localPrepare(args, reply)
 
 	return nil
 }
 
-// Accept ...
-func (px *Paxos) Accept(args AcceptArgs, reply *AcceptReply) error {
-	log.Println("Accept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
+// RPCAccept ...
+func (px *Paxos) RPCAccept(args AcceptArgs, reply *AcceptReply) error {
+	log.Println("RPCAccept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
 	px.localAccept(args, reply)
 	return nil
 }
 
-// Decided ...
-func (px *Paxos) Decided(args DecidedArgs, reply *DecidedReply) error {
-	log.Println("Decided - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
+// RPCDecided ...
+func (px *Paxos) RPCDecided(args DecidedArgs, reply *DecidedReply) error {
+	log.Println("RPCDecided - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
 	px.localDecide(args, reply)
 	return nil
 }
@@ -237,8 +237,11 @@ func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
 		instance.seq = args.Seq
 		instance.status = Pending
 		instance.pNum = args.Num
+		instance.aNum = -1
+		instance.aValue = nil
 
 		reply.Status = PrepareOK
+		reply.ProposeNum = instance.pNum
 		reply.AcceptNum = instance.aNum
 		reply.AcceptValue = instance.aValue
 
@@ -251,6 +254,7 @@ func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
 	reply.AcceptNum = instance.aNum
 	reply.AcceptValue = instance.aValue
 	if instance.status == Decided {
+		reply.ProposeNum = instance.pNum
 		reply.Status = SeqDecided
 
 		return
@@ -258,12 +262,14 @@ func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
 	if args.Num > instance.pNum {
 		instance.pNum = args.Num
 
+		reply.ProposeNum = instance.pNum
 		reply.Status = PrepareOK
 
 		px.instances[args.Seq] = instance
 
 		return
 	}
+	reply.ProposeNum = instance.pNum
 	reply.Status = PrepareReject
 }
 
@@ -285,14 +291,14 @@ func (px *Paxos) setInstance(seq int, instance *Instance) {
 /*
  */
 func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
-	log.Println("====== prepare - me:", px.me, "seq:", seq, "num:", num)
+	log.Println("====== start instance prepare - me:", px.me, "seq:", seq, "num:", num)
 	prepareCount := 0
 	peersCount := len(px.peers)
 	for {
 		accepted := make(map[int]PaxosValue)
 		maxIdx := -1
 		var maxNum int32
-		var decided bool
+		var maxPNum int32
 		for i := 0; i < peersCount; i++ {
 			pa := PrepareArgs{
 				Seq:  seq,
@@ -301,21 +307,21 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 				Done: px.peerDones[px.me],
 			}
 			pl := &PrepareReply{}
-			r := true
 			if i == px.me {
 				px.localPrepare(pa, pl)
 			} else {
-				r = call(px.peers[i], "Paxos.Prepare", pa, pl)
-				if !r {
+				r := call(px.peers[i], "Paxos.RPCPrepare", pa, pl)
+				if !r { //call失败，不是Prepare失败
 					continue
 				}
 			}
-			if pl.AcceptNum > num {
-				num = pl.AcceptNum
-			}
 			if pl.Status == SeqDecided {
-				decided = true
-				maxIdx = i
+				log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "SEQ HAS BEEN DECIDED")
+				return true, num, pl.AcceptNum, pl.AcceptValue
+			}
+
+			if pl.ProposeNum > maxPNum {
+				maxPNum = pl.ProposeNum
 			}
 			if pl.Status == PrepareOK {
 				prepareCount++
@@ -324,26 +330,25 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 					aValue: pl.AcceptValue,
 				}
 				accepted[i] = p
-				if pl.AcceptNum > maxNum {
+				if pl.AcceptNum >= maxNum {
 					maxNum = pl.AcceptNum
 					maxIdx = i
 				}
 			}
 		}
-		if decided {
-			log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "SEQ HAS BEEN DECIDED")
-			return true, num, accepted[maxIdx].aNum, accepted[maxIdx].aValue
-		}
 
 		log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "prepareCount:", prepareCount, "maxIdx:", maxIdx, "maxNum:", maxNum)
 		if prepareCount*2 > peersCount {
-			return false, num, accepted[maxIdx].aNum, accepted[maxIdx].aValue
-		} else {
-			num = ((maxNum+int32(peersCount)-1)/int32(peersCount))*int32(peersCount) + int32(px.me)
-
-			r := rand.Int() % 100
-			time.Sleep(time.Duration(r) * time.Millisecond)
+			if maxIdx != -1 {
+				return false, num, accepted[maxIdx].aNum, accepted[maxIdx].aValue
+			}
+			return false, num, -1, nil
 		}
+
+		num = ((maxPNum+int32(peersCount)-1)/int32(peersCount))*int32(peersCount) + int32(px.me)
+
+		r := rand.Int() % 100
+		time.Sleep(time.Duration(r) * time.Millisecond)
 	}
 
 	return false, 0, 0, nil
@@ -404,17 +409,16 @@ func (px *Paxos) accept(seq int, num int32, value interface{}) bool {
 			Value: value,
 		}
 		pl := &AcceptReply{}
-		r := true
 		if i == px.me {
 			px.localAccept(pa, pl)
 		} else {
-			r = call(px.peers[i], "Paxos.Accept", pa, pl)
+			r := call(px.peers[i], "Paxos.RPCAccept", pa, pl)
 			if !r {
 				continue
 			}
 		}
 		if pl.Status == AcceptOK {
-			acceptCount += 1
+			acceptCount++
 		}
 	}
 	if acceptCount*2 > peersCount {
@@ -475,17 +479,16 @@ func (px *Paxos) decide(seq int, num int32, value interface{}) {
 			Value: value,
 		}
 		pl := &DecidedReply{}
-		r := true
 		if i == px.me {
 			px.localDecide(pa, pl)
 		} else {
-			r = call(px.peers[i], "Paxos.Decided", pa, pl)
+			r := call(px.peers[i], "Paxos.RPCDecided", pa, pl)
 			if !r {
 				continue
 			}
 		}
 		if pl.Status == AcceptOK {
-			count += 1
+			count++
 		}
 	}
 }
@@ -537,7 +540,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	if err != nil {
 		err1 := err.(*net.OpError)
 		if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
-			fmt.Printf("paxos Dial() failed: %v\n", err1)
+			fmt.Printf("%s:%s - paxos Dial() failed: %v\n", srv, name, err1)
 		}
 		return false
 	}
@@ -548,7 +551,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 		return true
 	}
 
-	fmt.Println(err)
+	fmt.Println(srv, name, err)
 	return false
 }
 
