@@ -112,11 +112,10 @@ type Paxos struct {
 	me         int // index into peers[]
 
 	// Your data here.
-	min          int                 //内存中保存的instance的最小seq
-	max          int                 //内存中保存的instance的最大seq
-	instances    map[int]*Instance   //(Min, Max]之间的所有instance
-	peerDones    []int               //保存所有peer的min
-	acceptValues map[int]*PaxosValue //每个instance的最终结果
+	min       int               //内存中保存的instance的最小seq
+	max       int               //内存中保存的instance的最大seq
+	instances map[int]*Instance //(Min, Max]之间的所有instance
+	peerDones []int             //保存所有peer的min
 }
 
 // PrepareArgs ...
@@ -345,6 +344,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 			return false, num, -1, nil
 		}
 
+		prepareCount = 0
 		num = ((maxPNum+int32(peersCount)-1)/int32(peersCount))*int32(peersCount) + int32(px.me)
 
 		r := rand.Int() % 100
@@ -454,12 +454,6 @@ func (px *Paxos) localDecide(args DecidedArgs, reply *DecidedReply) {
 	instance.aNum = args.Num
 	instance.aValue = args.Value
 	instance.status = Decided
-	//TODO 不记录？
-	// pv := &PaxosValue{
-	// 	aNum:   args.Num,
-	// 	aValue: args.Value,
-	// }
-	// px.acceptValues[args.Seq] = pv
 	px.instances[args.Seq] = instance
 
 	reply.Seq = args.Seq
@@ -729,7 +723,6 @@ func Make(peers []string, me int, rpcs *rpc.Server) *Paxos {
 	px.max = -1
 	px.instances = make(map[int]*Instance)
 	px.peerDones = make([]int, len(px.peers), len(px.peers))
-	px.acceptValues = make(map[int]*PaxosValue)
 	for i := 0; i < len(px.peers); i++ {
 		px.peerDones[i] = -1
 	}
