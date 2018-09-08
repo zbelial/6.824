@@ -746,6 +746,14 @@ func cleanpp(tag string, n int) {
 	}
 }
 
+/*
+首先删除所有格式为px-partition-[pid]-[i]-[j]的port（也就是只剩下每个pxa中的peer本身的port -- px-[pid]-partition-[i]）；
+对于p1/p2/p3中的每个peer，对其port(格式为px-[pid]-partition-[i])创建一个新的硬链接(格式为px-partition-[pid]-[i]-[j])
+因为(TestPartition/TestLots中的)pxa，其peers中peer本身的port格式为px-[pid]-partition-[i]，而其它peer的port格式为px-partition-[pid]-[i]-[j]，因此刚开始创建的peer互相之间是无法通信的。
+若p为[0, 2]，则会创建px-partition-[pid]-0-0 => px-[pid]-partition-0，px-partition-[pid]-0-2 => px-[pid]-partition-2，px-partition-[pid]-2-0 => px-[pid]-partition-0，px-partition-[pid]-2-2 => px-[pid]-partition-2。这样p中的peer之间就可以互相通信。
+再举例如下：
+若p为[1, 3]，则会创建px-partition-[pid]-1-1 => px-[pid]-partition-1，px-partition-[pid]-1-3 => px-[pid]-partition-3，px-partition-[pid]-3-1 => px-[pid]-partition-1，px-partition-[pid]-3-3 => px-[pid]-partition-3
+*/
 func part(t *testing.T, tag string, npaxos int, p1 []int, p2 []int, p3 []int) {
 	cleanpp(tag, npaxos)
 
@@ -777,6 +785,8 @@ func TestPartition(t *testing.T) {
 	defer cleanup(pxa)
 	defer cleanpp(tag, npaxos)
 
+	//对每个pxa，在其pxh中，其本身对应的port格式为px-[pid]-partition-[i]
+	//其它peer对应的port格式为px-partition-[pid]-[i]-[j]
 	for i := 0; i < npaxos; i++ {
 		var pxh []string = make([]string, npaxos)
 		for j := 0; j < npaxos; j++ {
