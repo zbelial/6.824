@@ -30,6 +30,10 @@ func port(tag string, host int) string {
 	return s
 }
 
+/*
+检查pxa中的各个peer中序号为seq的instance的状态是否是Decided，如果是，还要检查状态为Decided的各个pxa的Value是否一致。
+返回状态为Decided的pxa数量。
+*/
 func ndecided(t *testing.T, pxa []*Paxos, seq int) int {
 	count := 0
 	var v interface{}
@@ -49,6 +53,9 @@ func ndecided(t *testing.T, pxa []*Paxos, seq int) int {
 	return count
 }
 
+/*
+等待pxa中序号为seq的实例至少有wanted个其状态是Decided。
+*/
 func waitn(t *testing.T, pxa []*Paxos, seq int, wanted int) {
 	to := 10 * time.Millisecond
 	for iters := 0; iters < 30; iters++ {
