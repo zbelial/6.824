@@ -14,4 +14,4 @@
 .glide/
 
 main/mrtmp*
-test*.log
+*.log

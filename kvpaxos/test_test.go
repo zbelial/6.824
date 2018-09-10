@@ -9,6 +9,7 @@ import "fmt"
 import "math/rand"
 import "strings"
 import "sync/atomic"
+import "log"
 
 func check(t *testing.T, ck *Clerk, key string, value string) {
 	v := ck.Get(key)
@@ -39,6 +40,12 @@ func cleanup(kva []*KVPaxos) {
 // predict effect of Append(k, val) if old value is prev.
 func NextValue(prev string, val string) string {
 	return prev + val
+}
+
+func TestMain(m *testing.M) {
+	log.SetOutput(os.Stdout)
+
+	os.Exit(m.Run())
 }
 
 func TestBasic(t *testing.T) {

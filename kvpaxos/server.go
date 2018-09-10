@@ -4,14 +4,16 @@ import "net"
 import "fmt"
 import "net/rpc"
 import "log"
-import "paxos"
+import "github.com/zbelial/6.824/paxos"
 import "sync"
 import "sync/atomic"
 import "os"
 import "syscall"
 import "encoding/gob"
 import "math/rand"
-
+import "time"
+import "errors"
+import "bytes"
 
 const Debug = 0
 
@@ -22,11 +24,21 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
+const (
+	OpPut int = iota + 1
+	OpAppend
+	OpGet
+	OpNil
+)
 
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	OpType int
+	RandID int64 //随机数
+	Key    string
+	Value  string
 }
 
 type KVPaxos struct {
@@ -37,17 +49,120 @@ type KVPaxos struct {
 	unreliable int32 // for testing
 	px         *paxos.Paxos
 
-	// Your definitions here.
+	//  Your definitions here.
+	ids map[int64]bool //是否收到过id
 }
 
+func (kv *KVPaxos) wait(seq int) (Op, error) {
+	// Your code here.
+	to := 10 * time.Millisecond
+	for {
+		status, v := kv.px.Status(seq)
+		if status == paxos.Decided {
+			//TODO
+			return v.(Op), nil
+		}
+		if status == paxos.Forgotten {
+			//TODO
+			return Op{}, errors.New("Forgotten")
+		}
+		time.Sleep(to)
+		if to < 10*time.Second {
+			to *= 2
+		}
+	}
+
+	return Op{}, errors.New("Error")
+}
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	var op Op
+	op.Key = args.Key
+	op.RandID = args.RandID
+	op.OpType = OpGet
+
+	seq := kv.px.Max() + 1
+	for {
+		kv.px.Start(seq, op)
+		_, err := kv.wait(seq)
+		if err == nil {
+			reply.Err = OK
+
+			stack := make([]string, 0)
+			for i := seq - 1; i >= 0; i-- {
+				s, v := kv.px.Status(i)
+				if s != paxos.Decided {
+					continue
+				}
+
+				log := v.(Op)
+				if log.Key != args.Key {
+					continue
+				}
+				if log.OpType == OpPut {
+					stack = append(stack, log.Value)
+					break
+				} else if log.OpType == OpAppend {
+					stack = append(stack, log.Value)
+				}
+			}
+
+			var buf bytes.Buffer
+			for i := len(stack) - 1; i >= 0; i-- {
+				buf.WriteString(stack[i])
+			}
+			reply.Value = buf.String()
+			break
+		}
+
+		seq++
+	}
+	kv.ids[args.RandID] = true
+
 	return nil
 }
 
 func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	_, ok := kv.ids[args.RandID]
+	if ok {
+		reply.Err = OK
+		return nil
+	}
+
+	var op Op
+	op.Key = args.Key
+	op.Value = args.Value
+	op.RandID = args.RandID
+	if args.Op == "Put" {
+		op.OpType = OpPut
+	} else {
+		op.OpType = OpAppend
+	}
+
+	seq := kv.px.Max() + 1
+	for {
+		kv.px.Start(seq, op)
+		_, err := kv.wait(seq)
+		if err == nil {
+			reply.Err = OK
+			break
+		}
+
+		seq++
+	}
+	kv.ids[args.RandID] = true
+
+	// if op.OpType == OpPut {
+	// 	kv.px.Done(seq)
+	// }
 
 	return nil
 }
@@ -94,6 +209,7 @@ func StartServer(servers []string, me int) *KVPaxos {
 	kv.me = me
 
 	// Your initialization code here.
+	kv.ids = make(map[int64]bool)
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
@@ -106,7 +222,6 @@ func StartServer(servers []string, me int) *KVPaxos {
 		log.Fatal("listen error: ", e)
 	}
 	kv.l = l
-
 
 	// please do not change any of the following code,
 	// or do anything to subvert it.
