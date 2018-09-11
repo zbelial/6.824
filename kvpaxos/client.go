@@ -99,12 +99,13 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
-	log.Println("Clerk.PutAppend", "key:", key, "value:", value, "op:", op)
 	args := PutAppendArgs{}
 	args.Key = key
 	args.Value = value
 	args.Op = op
 	args.RandID = nrand()
+
+	log.Println("Clerk.PutAppend", "key:", key, "value:", value, "op:", op, "RandID:", args.RandID)
 
 	var reply = &PutAppendReply{}
 	for {

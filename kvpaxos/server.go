@@ -80,9 +80,9 @@ func (kv *KVPaxos) wait(seq int, op Op) error {
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
-	log.Println("KVPaxos.Get", "Key:", args.Key, "RandID:", args.RandID)
+	log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID)
 	defer func() {
-		log.Println("KVPaxos.Get", "Key:", args.Key, "RandID:", args.RandID, "Err:", reply.Err, "Value:", reply.Value)
+		log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "Err:", reply.Err, "Value:", reply.Value)
 	}()
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
@@ -137,9 +137,9 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 
 func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// Your code here.
-	log.Println("KVPaxos.PutAppend", "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID)
+	log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID)
 	defer func() {
-		log.Println("KVPaxos.PutAppend", "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "Err:", reply.Err)
+		log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "Err:", reply.Err)
 	}()
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
