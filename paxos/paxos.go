@@ -336,7 +336,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 			}
 		}
 
-		log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "prepareCount:", prepareCount, "maxIdx:", maxIdx, "maxNum:", maxNum)
+		log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "prepareCount:", prepareCount, "maxIdx:", maxIdx, "maxNum:", maxNum, "maxPNum:", maxPNum)
 		if prepareCount*2 > peersCount {
 			if maxIdx != -1 {
 				return false, num, accepted[maxIdx].aNum, accepted[maxIdx].aValue
@@ -345,7 +345,8 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 		}
 
 		prepareCount = 0
-		num = ((maxPNum+int32(peersCount)-1)/int32(peersCount))*int32(peersCount) + int32(px.me)
+		num = ((maxPNum+1)/int32(peersCount)+1)*int32(peersCount) + int32(px.me)
+		// num = ((maxPNum+int32(peersCount))/int32(peersCount))*int32(peersCount) + int32(px.me)
 
 		r := rand.Int() % 100
 		time.Sleep(time.Duration(r) * time.Millisecond)

@@ -5,6 +5,7 @@ import "crypto/rand"
 import "math/big"
 
 import "fmt"
+import "log"
 
 type Clerk struct {
 	servers []string
@@ -66,21 +67,28 @@ func call(srv string, rpcname string,
 //
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
+	log.Println("Clerk.Get", "key:", key)
+	var reply = &GetReply{}
+
+	defer func() {
+		log.Println("Clerk.Get", "key:", key, "value:", reply.Value)
+	}()
 	args := GetArgs{}
 	args.Key = key
 	args.RandID = nrand()
 
-	for i := 0; i < len(ck.servers); i++ {
-		var reply = &GetReply{}
-		r := call(ck.servers[i], "KVPaxos.Get", args, reply)
-		if !r {
-			continue
-		}
-		if reply.Err != OK {
-			continue
-		}
+	for {
+		for i := 0; i < len(ck.servers); i++ {
+			r := call(ck.servers[i], "KVPaxos.Get", args, reply)
+			if !r {
+				continue
+			}
+			if reply.Err != OK {
+				continue
+			}
 
-		return reply.Value
+			return reply.Value
+		}
 	}
 
 	return ""
@@ -91,22 +99,30 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	log.Println("Clerk.PutAppend", "key:", key, "value:", value, "op:", op)
 	args := PutAppendArgs{}
 	args.Key = key
 	args.Value = value
 	args.Op = op
 	args.RandID = nrand()
 
-	for i := 0; i < len(ck.servers); i++ {
-		var reply = &PutAppendReply{}
-		r := call(ck.servers[i], "KVPaxos.PutAppend", args, reply)
-		if !r {
-			continue
+	var reply = &PutAppendReply{}
+	for {
+		b := false
+		for i := 0; i < len(ck.servers); i++ {
+			r := call(ck.servers[i], "KVPaxos.PutAppend", args, reply)
+			if !r {
+				continue
+			}
+			if reply.Err != OK {
+				continue
+			}
+			b = true
+			break
 		}
-		if reply.Err != OK {
-			continue
+		if b {
+			break
 		}
-		break
 	}
 }
 
