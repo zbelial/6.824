@@ -1,9 +1,11 @@
 package kvpaxos
 
 import "net/rpc"
-import "crypto/rand"
+import crand "crypto/rand"
 import "math/big"
+import mrand "math/rand"
 
+import "time"
 import "fmt"
 import "log"
 
@@ -14,7 +16,7 @@ type Clerk struct {
 
 func nrand() int64 {
 	max := big.NewInt(int64(1) << 62)
-	bigx, _ := rand.Int(rand.Reader, max)
+	bigx, _ := crand.Int(crand.Reader, max)
 	x := bigx.Int64()
 	return x
 }
@@ -81,6 +83,8 @@ func (ck *Clerk) Get(key string) string {
 		for i := 0; i < len(ck.servers); i++ {
 			r := call(ck.servers[i], "KVPaxos.Get", args, reply)
 			if !r {
+				r := mrand.Int() % 100
+				time.Sleep(time.Duration(r) * time.Millisecond)
 				continue
 			}
 			if reply.Err != OK {
@@ -113,6 +117,8 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		for i := 0; i < len(ck.servers); i++ {
 			r := call(ck.servers[i], "KVPaxos.PutAppend", args, reply)
 			if !r {
+				r := mrand.Int() % 100
+				time.Sleep(time.Duration(r) * time.Millisecond)
 				continue
 			}
 			if reply.Err != OK {
