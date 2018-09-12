@@ -3,6 +3,7 @@ package kvpaxos
 const (
 	OK       = "OK"
 	ErrNoKey = "ErrNoKey"
+	Dup      = "Dup"
 )
 
 type Err string

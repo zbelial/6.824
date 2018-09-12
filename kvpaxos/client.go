@@ -113,21 +113,21 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	var reply = &PutAppendReply{}
 	for {
-		b := false
+		ok := false
 		for i := 0; i < len(ck.servers); i++ {
 			r := call(ck.servers[i], "KVPaxos.PutAppend", args, reply)
 			if !r {
 				time.Sleep(time.Duration(mrand.Int()%100) * time.Millisecond)
 				continue
 			}
-			if reply.Err != OK {
-				time.Sleep(time.Duration(mrand.Int()%100) * time.Millisecond)
-				continue
+			if reply.Err == OK {
+				ok = true
+				break
 			}
-			b = true
-			break
+			time.Sleep(time.Duration(mrand.Int()%100) * time.Millisecond)
+			continue
 		}
-		if b {
+		if ok {
 			break
 		}
 	}

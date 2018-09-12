@@ -144,11 +144,16 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	_, ok := kv.ids[args.RandID]
+	v, ok := kv.ids[args.RandID]
 	if ok {
-		reply.Err = OK
+		if v {
+			reply.Err = OK
+		} else {
+			reply.Err = Dup
+		}
 		return nil
 	}
+	kv.ids[args.RandID] = false
 
 	var op Op
 	op.Key = args.Key
