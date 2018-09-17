@@ -91,8 +91,6 @@ type Instance struct {
 	pNum   int32       // acceptor highest prepare number seen
 	aNum   int32       // acceptor highest accept number seen
 	aValue interface{} // acceptor highest accept value seen
-
-	num int32 // proposer num
 }
 
 // PaxosValue ...
@@ -175,6 +173,19 @@ type DoneArgs struct {
 type DoneReply struct {
 }
 
+// LearnArgs ...
+type LearnArgs struct {
+	Seq int
+	Me  int
+}
+
+// LearnReply ...
+type LearnReply struct {
+	Seq    int
+	Status Fate
+	Value  interface{}
+}
+
 // RPCDone ...
 func (px *Paxos) RPCDone(args DoneArgs, reply *DoneReply) error {
 	log.Println("RpcDone - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq)
@@ -212,6 +223,17 @@ func (px *Paxos) RPCAccept(args AcceptArgs, reply *AcceptReply) error {
 func (px *Paxos) RPCDecided(args DecidedArgs, reply *DecidedReply) error {
 	log.Println("RPCDecided - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
 	px.localDecide(args, reply)
+	return nil
+}
+
+// RPCLearn ...
+func (px *Paxos) RPCLearn(args LearnArgs, reply *LearnReply) error {
+	log.Println("RPCLearn - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq)
+	s, v := px.Status(args.Seq)
+	reply.Seq = args.Seq
+	reply.Status = s
+	reply.Value = v
+
 	return nil
 }
 
@@ -285,6 +307,38 @@ func (px *Paxos) setInstance(seq int, instance *Instance) {
 	defer px.mu.Unlock()
 
 	px.instances[seq] = instance
+}
+
+func (px *Paxos) Learn(seq int) (Fate, interface{}) {
+	px.mu.Lock()
+	defer px.mu.Unlock()
+
+	_, ok := px.instances[seq]
+	if !ok {
+		args := LearnArgs{
+			Seq: seq,
+			Me:  px.me,
+		}
+		reply := &LearnReply{}
+		for i := 0; i < len(px.peers); i++ {
+			if i != px.me {
+				r := call(px.peers[i], "Paxos.RPCLearn", args, reply)
+				if r {
+					if reply.Status == Decided {
+						inst := &Instance{}
+						inst.seq = seq
+						inst.aValue = reply.Value
+
+						px.instances[seq] = inst
+
+						return reply.Status, reply.Value
+					}
+				}
+			}
+		}
+	}
+
+	return Pending, nil
 }
 
 /*
@@ -572,7 +626,6 @@ func (px *Paxos) Start(seq int, v interface{}) {
 		instance := new(Instance)
 		instance.seq = seq
 		instance.status = Pending
-		instance.num = int32(px.me)
 		instance.pNum = -1
 		instance.aNum = -1
 		instance.aValue = nil

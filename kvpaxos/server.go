@@ -50,7 +50,9 @@ type KVPaxos struct {
 	px         *paxos.Paxos
 
 	//  Your definitions here.
-	ids map[int64]bool //是否收到过id
+	ids       map[int64]bool //是否收到过id
+	logs      []*Op
+	maxCached int //已缓存的log的最大seq
 }
 
 func (kv *KVPaxos) wait(seq int, op Op) error {
@@ -99,31 +101,68 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 		if err == nil {
 			reply.Err = OK
 
-			stack := make([]string, 0)
-			for i := seq - 1; i >= 0; i-- {
+			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "maxCached:", kv.maxCached, "seq:", seq)
+
+			for i := 0; i < kv.maxCached+1; i++ {
+				l := kv.logs[i]
+				if l == nil {
+					s, v := kv.px.Status(i)
+					if s == paxos.Decided {
+						l := v.(Op)
+						kv.logs[i] = &l
+					} else {
+						s, v = kv.px.Learn(i)
+						if s == paxos.Decided {
+							l := v.(Op)
+							kv.logs[i] = &l
+						}
+					}
+				}
+			}
+			for i := kv.maxCached + 1; i < seq; i++ {
 				s, v := kv.px.Status(i)
 				if s != paxos.Decided {
-					continue
+					s, v = kv.px.Learn(i)
+					if s == paxos.Decided {
+						l := v.(Op)
+						kv.logs[i] = &l
+					} else {
+						kv.logs = append(kv.logs, nil)
+					}
+				} else {
+					l := v.(Op)
+					kv.logs = append(kv.logs, &l)
 				}
-
-				l := v.(Op)
-				if l.Key != args.Key {
-					continue
-				}
-				if l.OpType == OpPut {
-					log.Println("KVPaxos.Get BackTrace Put", "Key:", args.Key, "RandID:", args.RandID, "Value", l.Value, "l.RandID:", l.RandID)
-					stack = append(stack, l.Value)
-					break
-				} else if l.OpType == OpAppend {
-					log.Println("KVPaxos.Get BackTrace Append", "Key:", args.Key, "RandID:", args.RandID, "Value", l.Value, "l.RandID:", l.RandID)
-					stack = append(stack, l.Value)
-				}
+				kv.maxCached = i
 			}
 
+			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "maxCached:", kv.maxCached, "seq2:", seq)
+			dm := make(map[int64]bool)
 			var buf bytes.Buffer
-			for i := len(stack) - 1; i >= 0; i-- {
-				buf.WriteString(stack[i])
+			for i := 0; i < kv.maxCached+1; i++ {
+				l := kv.logs[i]
+				if l != nil {
+					if l.Key != args.Key {
+						continue
+					}
+					_, ok := dm[l.RandID]
+					if ok {
+						continue
+					}
+					dm[l.RandID] = true
+
+					if l.OpType == OpPut {
+						log.Println("KVPaxos.Get BackTrace Put", "Key:", args.Key, "RandID:", args.RandID, "Value", l.Value, "l.RandID:", l.RandID)
+						buf.Reset()
+						buf.WriteString(l.Value)
+					} else if l.OpType == OpAppend {
+						log.Println("KVPaxos.Get BackTrace Append", "Key:", args.Key, "RandID:", args.RandID, "Value", l.Value, "l.RandID:", l.RandID)
+						buf.WriteString(l.Value)
+					}
+
+				}
 			}
+
 			reply.Value = buf.String()
 			break
 		}
@@ -228,6 +267,8 @@ func StartServer(servers []string, me int) *KVPaxos {
 
 	// Your initialization code here.
 	kv.ids = make(map[int64]bool)
+	kv.logs = make([]*Op, 0)
+	kv.maxCached = -1
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)
