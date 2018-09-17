@@ -48,6 +48,7 @@ func MakeClerk(servers []string) *Clerk {
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("unix", srv)
+	fmt.Printf("%s:%s - paxos Dial() failed: %v\n", srv, rpcname, errx)
 	if errx != nil {
 		return false
 	}
@@ -58,7 +59,7 @@ func call(srv string, rpcname string,
 		return true
 	}
 
-	fmt.Println(err)
+	fmt.Println(srv, rpcname, err)
 	return false
 }
 
@@ -69,15 +70,17 @@ func call(srv string, rpcname string,
 //
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
-	log.Println("Clerk.Get", "key:", key)
+	// log.Println("Clerk.Get", "Key:", key)
 	var reply = &GetReply{}
 
 	defer func() {
-		log.Println("Clerk.Get", "key:", key, "value:", reply.Value)
+		log.Println("Clerk.Get", "Key:", key, "value:[", reply.Value, "]")
 	}()
 	args := GetArgs{}
 	args.Key = key
 	args.RandID = nrand()
+
+	log.Println("Clerk.Get", "Key:", key, "RandID:", args.RandID)
 
 	for {
 		for i := 0; i < len(ck.servers); i++ {
@@ -109,7 +112,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Op = op
 	args.RandID = nrand()
 
-	log.Println("Clerk.PutAppend", "key:", key, "value:", value, "op:", op, "RandID:", args.RandID)
+	log.Println("Clerk.PutAppend", "Key:", key, "value:", value, "op:", op, "RandID:", args.RandID)
 
 	var reply = &PutAppendReply{}
 	for {

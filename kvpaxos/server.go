@@ -57,6 +57,11 @@ type KVPaxos struct {
 
 func (kv *KVPaxos) wait(seq int, op Op) error {
 	// Your code here.
+	// var err error
+	log.Println("KVPaxos.wait", "me:", kv.me, "Seq:", seq, "Key:", op.Key, "RandID:", op.RandID, "OpType:", op.OpType)
+	// defer func() {
+	// 	log.Println("KVPaxos.wait", "me:", kv.me, "Seq:", seq, "Key:", op.Key, "RandID:", op.RandID, "OpType:", op.OpType, "err:", err)
+	// }()
 	to := 10 * time.Millisecond
 	for {
 		status, v := kv.px.Status(seq)
@@ -82,12 +87,13 @@ func (kv *KVPaxos) wait(seq int, op Op) error {
 
 func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 	// Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
 	log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID)
 	defer func() {
 		log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "Err:", reply.Err, "Value:", reply.Value)
 	}()
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
 
 	var op Op
 	op.Key = args.Key
@@ -103,7 +109,7 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 
 			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "maxCached:", kv.maxCached, "seq:", seq)
 
-			for i := 0; i < kv.maxCached+1; i++ {
+			for i := 0; i <= kv.maxCached; i++ {
 				l := kv.logs[i]
 				if l == nil {
 					s, v := kv.px.Status(i)
@@ -125,7 +131,7 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 					s, v = kv.px.Learn(i)
 					if s == paxos.Decided {
 						l := v.(Op)
-						kv.logs[i] = &l
+						kv.logs = append(kv.logs, &l)
 					} else {
 						kv.logs = append(kv.logs, nil)
 					}
@@ -176,12 +182,13 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 
 func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	// Your code here.
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
 	log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID)
 	defer func() {
 		log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "Err:", reply.Err)
 	}()
-	kv.mu.Lock()
-	defer kv.mu.Unlock()
 
 	v, ok := kv.ids[args.RandID]
 	if ok {
@@ -213,6 +220,7 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 			break
 		}
 
+		log.Println("KVPaxos.wait", "me:", kv.me, "Seq:", seq, "Key:", op.Key, "RandID:", op.RandID, "OpType:", op.OpType, "err:", err)
 		seq++
 	}
 	kv.ids[args.RandID] = true

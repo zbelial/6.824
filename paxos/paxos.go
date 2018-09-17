@@ -47,6 +47,7 @@ const (
 	Decided   Fate = iota + 1
 	Pending        // not yet decided.
 	Forgotten      // decided but forgotten.
+	Unknown
 )
 
 // const (
@@ -229,6 +230,7 @@ func (px *Paxos) RPCDecided(args DecidedArgs, reply *DecidedReply) error {
 // RPCLearn ...
 func (px *Paxos) RPCLearn(args LearnArgs, reply *LearnReply) error {
 	log.Println("RPCLearn - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq)
+
 	s, v := px.Status(args.Seq)
 	reply.Seq = args.Seq
 	reply.Status = s
@@ -238,13 +240,15 @@ func (px *Paxos) RPCLearn(args LearnArgs, reply *LearnReply) error {
 }
 
 func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
-	log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Done", args.Done)
-	defer func() {
-		log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Done", args.Done, "Status:", reply.Status, "AcceptNum:", reply.AcceptNum, "AcceptValue:", reply.AcceptValue)
-	}()
-
 	px.mu.Lock()
 	defer px.mu.Unlock()
+
+	var instance *Instance
+
+	log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Done", args.Done)
+	defer func() {
+		log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Done", args.Done, "Status:", reply.Status, "AcceptNum:", reply.AcceptNum, "AcceptValue:", reply.AcceptValue, "pNum:", instance.pNum)
+	}()
 
 	reply.Seq = args.Seq
 	reply.ProposeNum = args.Num
@@ -271,7 +275,7 @@ func (px *Paxos) localPrepare(args PrepareArgs, reply *PrepareReply) {
 		return
 	}
 
-	log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "pNum", instance.pNum)
+	// log.Println("localPrepare - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "pNum", instance.pNum)
 	reply.AcceptNum = instance.aNum
 	reply.AcceptValue = instance.aValue
 	if instance.status == Decided {
@@ -313,8 +317,10 @@ func (px *Paxos) Learn(seq int) (Fate, interface{}) {
 	px.mu.Lock()
 	defer px.mu.Unlock()
 
-	_, ok := px.instances[seq]
-	if !ok {
+	log.Println("LEARN - me:", px.me, "Seq:", seq)
+
+	ti, ok := px.instances[seq]
+	if !ok || ti.status != Decided {
 		args := LearnArgs{
 			Seq: seq,
 			Me:  px.me,
@@ -344,7 +350,7 @@ func (px *Paxos) Learn(seq int) (Fate, interface{}) {
 /*
  */
 func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
-	log.Println("====== start instance prepare - me:", px.me, "seq:", seq, "num:", num)
+	log.Println("PREPARE - me:", px.me, "Seq:", seq, "num:", num)
 	prepareCount := 0
 	peersCount := len(px.peers)
 	for {
@@ -369,7 +375,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 				}
 			}
 			if pl.Status == SeqDecided {
-				log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "SEQ HAS BEEN DECIDED")
+				log.Println("prepare - me:", px.me, "Seq:", seq, "num:", num, "SEQ HAS BEEN DECIDED")
 				return true, num, pl.AcceptNum, pl.AcceptValue
 			}
 
@@ -390,7 +396,7 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 			}
 		}
 
-		log.Println("prepare - me:", px.me, "seq:", seq, "num:", num, "prepareCount:", prepareCount, "maxIdx:", maxIdx, "maxNum:", maxNum, "maxPNum:", maxPNum)
+		log.Println("prepare - me:", px.me, "Seq:", seq, "num:", num, "prepareCount:", prepareCount, "maxIdx:", maxIdx, "maxNum:", maxNum, "maxPNum:", maxPNum)
 		if prepareCount*2 > peersCount {
 			if maxIdx != -1 {
 				return false, num, accepted[maxIdx].aNum, accepted[maxIdx].aValue
@@ -410,13 +416,14 @@ func (px *Paxos) prepare(seq int, num int32) (bool, int32, int32, interface{}) {
 }
 
 func (px *Paxos) localAccept(args AcceptArgs, reply *AcceptReply) {
-	log.Println("localAccept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
-	defer func() {
-		log.Println("localAccept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value, "Status:", reply.Status)
-	}()
-
 	px.mu.Lock()
 	defer px.mu.Unlock()
+
+	var instance *Instance
+	log.Println("localAccept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
+	defer func() {
+		log.Println("localAccept - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value, "Status:", reply.Status, "pNum:", instance.pNum)
+	}()
 
 	reply.Seq = args.Seq
 	reply.ProposeNum = args.Num
@@ -453,7 +460,7 @@ func (px *Paxos) localAccept(args AcceptArgs, reply *AcceptReply) {
 }
 
 func (px *Paxos) accept(seq int, num int32, value interface{}) bool {
-	log.Println("====== accept - me", px.me, "seq:", seq, "num:", num, "value:", value)
+	log.Println("ACCEPT - me", px.me, "Seq:", seq, "num:", num, "Value:", value)
 	acceptCount := 0
 	peersCount := len(px.peers)
 	for i := 0; i < peersCount; i++ {
@@ -483,13 +490,13 @@ func (px *Paxos) accept(seq int, num int32, value interface{}) bool {
 }
 
 func (px *Paxos) localDecide(args DecidedArgs, reply *DecidedReply) {
+	px.mu.Lock()
+	defer px.mu.Unlock()
+
 	log.Println("localDecide - me", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value)
 	defer func() {
 		log.Println("localDecide - me", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "args.Num:", args.Num, "args.Value:", args.Value, "Status:", reply.Status)
 	}()
-
-	px.mu.Lock()
-	defer px.mu.Unlock()
 
 	instance, ok := px.instances[args.Seq]
 	if !ok {
@@ -517,7 +524,7 @@ func (px *Paxos) localDecide(args DecidedArgs, reply *DecidedReply) {
 
 func (px *Paxos) decide(seq int, num int32, value interface{}) {
 	//TODO 判断成功接收decide的数量？
-	log.Println("====== decide - me:", px.me, "seq:", seq, "num:", num, "value:", value)
+	log.Println("DECIDE - me:", px.me, "Seq:", seq, "num:", num, "Value:", value)
 	count := 0
 	peersCount := len(px.peers)
 	for i := 0; i < peersCount; i++ {
@@ -543,6 +550,7 @@ func (px *Paxos) decide(seq int, num int32, value interface{}) {
 }
 
 func (px *Paxos) propose(seq int, value interface{}) {
+	log.Println("PROPOSE - me:", px.me, "Seq:", seq, "Value:", value)
 	num := int32(px.me)
 	for {
 		decided, num, _, aValue := px.prepare(seq, num)
@@ -562,7 +570,7 @@ func (px *Paxos) propose(seq int, value interface{}) {
 		}
 		px.decide(seq, num, aValue)
 
-		log.Println("PROPOSE FINISHED - me:", px.me, "seq:", seq, "num:", num, "value:", value)
+		log.Println("PROPOSE FINISHED - me:", px.me, "Seq:", seq, "num:", num, "Value:", value)
 		log.Println("")
 		break
 	}
@@ -612,14 +620,14 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 // is reached.
 //
 func (px *Paxos) Start(seq int, v interface{}) {
+	px.mu.Lock()
+	defer px.mu.Unlock()
+
 	// Your code here.
-	log.Println("Paxos.Start me:", px.me, "seq:", seq, "px.min:", px.min, "px.max:", px.max, "value:", v)
+	log.Println("Paxos.Start me:", px.me, "Seq:", seq, "px.min:", px.min, "px.max:", px.max, "Value:", v)
 	if seq < px.min {
 		return
 	}
-
-	px.mu.Lock()
-	defer px.mu.Unlock()
 
 	instance, ok := px.instances[seq]
 	if !ok {
@@ -632,7 +640,7 @@ func (px *Paxos) Start(seq int, v interface{}) {
 		px.instances[seq] = instance
 	} else {
 		if instance.status == Decided {
-			log.Println("Paxos.Start me:", px.me, "seq:", seq, "px.min:", px.min, "px.max:", px.max, "value:", v, "SEQ HAS BEEN DECIDED")
+			log.Println("Paxos.Start me:", px.me, "Seq:", seq, "px.min:", px.min, "px.max:", px.max, "Value:", v, "SEQ HAS BEEN DECIDED")
 			return
 		}
 	}
@@ -725,7 +733,7 @@ func (px *Paxos) Status(seq int) (Fate, interface{}) {
 
 	instance, ok := px.getInstance(seq)
 	if !ok {
-		return Pending, nil
+		return Unknown, nil
 	}
 	return instance.status, instance.aValue
 }
