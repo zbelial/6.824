@@ -230,6 +230,9 @@ func (px *Paxos) RPCDecided(args DecidedArgs, reply *DecidedReply) error {
 // RPCLearn ...
 func (px *Paxos) RPCLearn(args LearnArgs, reply *LearnReply) error {
 	log.Println("RPCLearn - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq)
+	defer func() {
+		log.Println("RPCLearn - me:", px.me, "args.Me:", args.Me, "args.Seq:", args.Seq, "Status:", reply.Status, "Value:", reply.Value)
+	}()
 
 	s, v := px.Status(args.Seq)
 	reply.Seq = args.Seq
@@ -326,20 +329,27 @@ func (px *Paxos) Learn(seq int) (Fate, interface{}) {
 			Me:  px.me,
 		}
 		reply := &LearnReply{}
-		for i := 0; i < len(px.peers); i++ {
-			if i != px.me {
-				r := call(px.peers[i], "Paxos.RPCLearn", args, reply)
-				if r {
-					if reply.Status == Decided {
-						inst := &Instance{}
-						inst.seq = seq
-						inst.aValue = reply.Value
+		for {
+			hasReply := false
+			for i := 0; i < len(px.peers); i++ {
+				if i != px.me {
+					r := call(px.peers[i], "Paxos.RPCLearn", args, reply)
+					if r {
+						if reply.Status == Decided {
+							inst := &Instance{}
+							inst.seq = seq
+							inst.aValue = reply.Value
 
-						px.instances[seq] = inst
+							px.instances[seq] = inst
 
-						return reply.Status, reply.Value
+							return reply.Status, reply.Value
+						}
+						hasReply = true
 					}
 				}
+			}
+			if hasReply {
+				break
 			}
 		}
 	}
