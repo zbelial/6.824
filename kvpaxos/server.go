@@ -14,6 +14,7 @@ import "math/rand"
 import "time"
 import "errors"
 import "bytes"
+import "math"
 
 const Debug = 0
 
@@ -52,7 +53,10 @@ type KVPaxos struct {
 	//  Your definitions here.
 	ids       map[int64]bool //是否收到过id
 	logs      []*Op
-	maxCached int //已缓存的log的最大seq
+	minCached int            //已缓存的log的最小seq
+	maxCached int            //已缓存的log的最大seq
+	keySeqMap map[string]int //对于key的上次put操作的seq
+	minPutSeq int
 }
 
 func (kv *KVPaxos) wait(seq int, op Op) error {
@@ -107,7 +111,7 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 		if err == nil {
 			reply.Err = OK
 
-			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "maxCached:", kv.maxCached, "seq:", seq)
+			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "minCached:", kv.minCached, "maxCached:", kv.maxCached, "seq:", seq)
 
 			for i := 0; i <= kv.maxCached; i++ {
 				l := kv.logs[i]
@@ -142,7 +146,7 @@ func (kv *KVPaxos) Get(args *GetArgs, reply *GetReply) error {
 				kv.maxCached = i
 			}
 
-			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "maxCached:", kv.maxCached, "seq2:", seq)
+			log.Println("KVPaxos.Get", "me:", kv.me, "Key:", args.Key, "RandID:", args.RandID, "minCached:", kv.minCached, "maxCached:", kv.maxCached, "seq2:", seq)
 			dm := make(map[int64]bool)
 			var buf bytes.Buffer
 			for i := 0; i < kv.maxCached+1; i++ {
@@ -220,14 +224,53 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 			break
 		}
 
-		log.Println("KVPaxos.wait", "me:", kv.me, "Seq:", seq, "Key:", op.Key, "RandID:", op.RandID, "OpType:", op.OpType, "err:", err)
+		log.Println("KVPaxos.wait retry", "me:", kv.me, "Seq:", seq, "Key:", op.Key, "RandID:", op.RandID, "OpType:", op.OpType, "err:", err)
 		seq++
 	}
 	kv.ids[args.RandID] = true
 
 	// if op.OpType == OpPut {
-	// 	kv.px.Done(seq)
+	// 	s, ok := kv.keySeqMap[op.Key]
+	// 	if ok {
+	// 		log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "prev:", s, "minPutSeq:", kv.minPutSeq)
+	// 		if s == kv.minPutSeq {
+	// 			kv.px.Done(s)
+	// 			kv.minPutSeq = math.MaxInt32
+	// 		}
+	// 	}
+	// 	kv.keySeqMap[op.Key] = seq
+
+	// 	for _, s2 := range kv.keySeqMap {
+	// 		if s2 < kv.minPutSeq {
+	// 			kv.minPutSeq = s2
+	// 		}
+	// 	}
+	// 	log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "new minPutSeq:", kv.minPutSeq)
 	// }
+
+	if op.OpType == OpPut {
+		kv.keySeqMap[op.Key] = seq
+		min := math.MaxInt32
+		for _, s2 := range kv.keySeqMap {
+			if s2 < min {
+				min = s2
+			}
+		}
+
+		if min > 0 {
+			kv.px.Done(min - 1)
+			// log.Println("minCached:", kv.minCached, "maxCached:", kv.maxCached, "Min:", min, "len(kv.logs):", len(kv.logs))
+
+			// if min > kv.maxCached {
+			// 	min = kv.maxCached
+			// }
+
+			// for i := kv.minCached; i < min; i++ {
+			// 	kv.logs[i] = nil
+			// }
+			// kv.minCached = min
+		}
+	}
 
 	return nil
 }
@@ -276,7 +319,10 @@ func StartServer(servers []string, me int) *KVPaxos {
 	// Your initialization code here.
 	kv.ids = make(map[int64]bool)
 	kv.logs = make([]*Op, 0)
+	kv.minCached = 0
 	kv.maxCached = -1
+	kv.keySeqMap = make(map[string]int)
+	kv.minPutSeq = math.MaxInt32
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)

@@ -48,8 +48,8 @@ func MakeClerk(servers []string) *Clerk {
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("unix", srv)
-	fmt.Printf("%s:%s - paxos Dial() failed: %v\n", srv, rpcname, errx)
 	if errx != nil {
+		fmt.Printf("%s:%s - kvpaxos Dial() failed: %v\n", srv, rpcname, errx)
 		return false
 	}
 	defer c.Close()

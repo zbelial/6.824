@@ -607,7 +607,7 @@ func call(srv string, name string, args interface{}, reply interface{}) bool {
 	if err != nil {
 		err1 := err.(*net.OpError)
 		if err1.Err != syscall.ENOENT && err1.Err != syscall.ECONNREFUSED {
-			fmt.Printf("%s:%s - paxos Dial() failed: %v\n", srv, name, err1)
+			fmt.Printf("%s:%s - paxos Dial() failed: %v\n", srv, name, err)
 		}
 		return false
 	}
@@ -713,6 +713,12 @@ func (px *Paxos) Min() int {
 }
 
 func (px *Paxos) freeInstance() {
+	defer func(min int) {
+		if min != px.min {
+			log.Println("Paxos.FreeInstance - me:", px.me, "old min:", min, "new min:", px.min)
+		}
+	}(px.min)
+
 	minDone := math.MaxInt32
 	for i := 0; i < len(px.peerDones); i++ {
 		if px.peerDones[i] < minDone {
