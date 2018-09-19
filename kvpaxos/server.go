@@ -56,7 +56,6 @@ type KVPaxos struct {
 	minCached int            //已缓存的log的最小seq
 	maxCached int            //已缓存的log的最大seq
 	keySeqMap map[string]int //对于key的上次put操作的seq
-	minPutSeq int
 }
 
 func (kv *KVPaxos) wait(seq int, op Op) error {
@@ -229,25 +228,6 @@ func (kv *KVPaxos) PutAppend(args *PutAppendArgs, reply *PutAppendReply) error {
 	}
 	kv.ids[args.RandID] = true
 
-	// if op.OpType == OpPut {
-	// 	s, ok := kv.keySeqMap[op.Key]
-	// 	if ok {
-	// 		log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "prev:", s, "minPutSeq:", kv.minPutSeq)
-	// 		if s == kv.minPutSeq {
-	// 			kv.px.Done(s)
-	// 			kv.minPutSeq = math.MaxInt32
-	// 		}
-	// 	}
-	// 	kv.keySeqMap[op.Key] = seq
-
-	// 	for _, s2 := range kv.keySeqMap {
-	// 		if s2 < kv.minPutSeq {
-	// 			kv.minPutSeq = s2
-	// 		}
-	// 	}
-	// 	log.Println("KVPaxos.PutAppend", "me:", kv.me, "Op:", args.Op, "Key:", args.Key, "Value:", args.Value, "RandID:", args.RandID, "new minPutSeq:", kv.minPutSeq)
-	// }
-
 	if op.OpType == OpPut {
 		kv.keySeqMap[op.Key] = seq
 		min := math.MaxInt32
@@ -322,7 +302,6 @@ func StartServer(servers []string, me int) *KVPaxos {
 	kv.minCached = 0
 	kv.maxCached = -1
 	kv.keySeqMap = make(map[string]int)
-	kv.minPutSeq = math.MaxInt32
 
 	rpcs := rpc.NewServer()
 	rpcs.Register(kv)

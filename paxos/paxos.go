@@ -50,15 +50,6 @@ const (
 	Unknown
 )
 
-// const (
-// 	PrepareOK int = iota + 1
-// 	PrepareReject
-// 	AcceptOK
-// 	AcceptReject
-// 	DecidedOk
-// 	DecidedReject
-// )
-
 //
 const (
 	PrepareOK     = "PrepareOK"
