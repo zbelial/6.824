@@ -144,7 +144,17 @@ func TestDone(t *testing.T) {
 	fmt.Printf("Test: server frees Paxos log memory...\n")
 
 	ck.Put("a", "aa")
+	{
+		var tm runtime.MemStats
+		runtime.ReadMemStats(&tm)
+		fmt.Printf("tm0 put %v\n", tm.Alloc)
+	}
 	check(t, ck, "a", "aa")
+	{
+		var tm runtime.MemStats
+		runtime.ReadMemStats(&tm)
+		fmt.Printf("tm0 get %v\n", tm.Alloc)
+	}
 
 	runtime.GC()
 	var m0 runtime.MemStats
@@ -152,7 +162,7 @@ func TestDone(t *testing.T) {
 	// rtm's m0.Alloc is 2 MB
 
 	sz := 1000000
-	sz = 10
+	sz = 100
 	items := 10
 
 	for iters := 0; iters < 2; iters++ {
@@ -163,7 +173,17 @@ func TestDone(t *testing.T) {
 				value[j] = byte((rand.Int() % 100) + 1)
 			}
 			ck.Put(key, string(value))
+			{
+				var tm runtime.MemStats
+				runtime.ReadMemStats(&tm)
+				fmt.Printf("tm put %d-%d %v\n", iters, i, tm.Alloc)
+			}
 			check(t, cka[i%nservers], key, string(value))
+			{
+				var tm runtime.MemStats
+				runtime.ReadMemStats(&tm)
+				fmt.Printf("tm get %d-%d %v\n", iters, i, tm.Alloc)
+			}
 		}
 	}
 
@@ -173,7 +193,17 @@ func TestDone(t *testing.T) {
 	for iters := 0; iters < 2; iters++ {
 		for pi := 0; pi < nservers; pi++ {
 			cka[pi].Put("a", "aa")
+			{
+				var tm2 runtime.MemStats
+				runtime.ReadMemStats(&tm2)
+				fmt.Printf("tm2 get %d-%d %v\n", iters, pi, tm2.Alloc)
+			}
 			check(t, cka[pi], "a", "aa")
+			{
+				var tm2 runtime.MemStats
+				runtime.ReadMemStats(&tm2)
+				fmt.Printf("tm2 put %d-%d %v\n", iters, pi, tm2.Alloc)
+			}
 		}
 	}
 
@@ -183,6 +213,9 @@ func TestDone(t *testing.T) {
 	var m1 runtime.MemStats
 	runtime.ReadMemStats(&m1)
 	// rtm's m1.Alloc is 45 MB
+	{
+		fmt.Printf("tm3 %v\n", m1.Alloc)
+	}
 
 	fmt.Printf("  Memory: before %v, after %v\n", m0.Alloc, m1.Alloc)
 
